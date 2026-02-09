@@ -304,6 +304,66 @@ fn current_minute() -> String {
     Local::now().format("%Y-%m-%d %H:%M").to_string()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{snapshot_rows, CollectorState, StatsKey, StatsValue};
+    use crate::storage::JsonFileStorage;
+    use std::{collections::HashMap, path::PathBuf, time::Instant};
+
+    fn build_state(stats: HashMap<StatsKey, StatsValue>) -> CollectorState {
+        let now = Instant::now();
+        CollectorState {
+            stats,
+            last_key_instant: now,
+            last_flush_instant: now,
+            paused: false,
+            keyboard_active: true,
+            last_error: None,
+            log_path: PathBuf::from("log.csv"),
+            app_log_path: PathBuf::from("app.log"),
+            storage: Box::new(JsonFileStorage {
+                path: PathBuf::from("detail.json"),
+            }),
+        }
+    }
+
+    #[test]
+    fn snapshot_rows_sorted_by_keys() {
+        let mut stats = HashMap::new();
+        stats.insert(
+            StatsKey {
+                date: "2026-02-09 10:01".to_string(),
+                app_name: "B".to_string(),
+                window_title: "TitleB".to_string(),
+            },
+            StatsValue {
+                active_typing_ms: 500,
+                key_count: 5,
+                session_count: 1,
+            },
+        );
+        stats.insert(
+            StatsKey {
+                date: "2026-02-09 10:00".to_string(),
+                app_name: "A".to_string(),
+                window_title: "TitleA".to_string(),
+            },
+            StatsValue {
+                active_typing_ms: 800,
+                key_count: 8,
+                session_count: 2,
+            },
+        );
+        let state = build_state(stats);
+        let rows = snapshot_rows(&state).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].date, "2026-02-09 10:00");
+        assert_eq!(rows[0].app_name, "A");
+        assert_eq!(rows[1].date, "2026-02-09 10:01");
+        assert_eq!(rows[1].app_name, "B");
+    }
+}
+
 fn active_window_info() -> (String, String) {
     if let Ok(window) = active_win_pos_rs::get_active_window() {
         let app = window.app_name;
