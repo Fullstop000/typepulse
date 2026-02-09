@@ -1,4 +1,4 @@
-import { GroupedRow, Snapshot, Totals, TrendGranularity, TrendPoint } from "../types";
+import { GroupedRow, Snapshot, Totals, TrendGranularity, TrendSeries } from "../types";
 import AppTable from "./AppTable";
 import FilterBar from "./FilterBar";
 import MetricsGrid from "./MetricsGrid";
@@ -11,7 +11,7 @@ type StatsPageProps = {
   onFilterChange: (value: 1 | 7) => void;
   totals: Totals;
   groupedRows: GroupedRow[];
-  trendSeries: TrendPoint[];
+  trendSeries: TrendSeries;
   trendGranularity: TrendGranularity;
   onTrendGranularityChange: (value: TrendGranularity) => void;
 };
