@@ -1,0 +1,474 @@
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+
+use chrono::Local;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Hash, Eq, PartialEq)]
+struct StatsKey {
+    date: String,
+    app_name: String,
+    window_title: String,
+}
+
+#[derive(Clone)]
+struct StatsValue {
+    active_typing_ms: u64,
+    key_count: u64,
+    session_count: u64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct StatsRow {
+    pub date: String,
+    pub app_name: String,
+    pub window_title: String,
+    pub active_typing_ms: u64,
+    pub key_count: u64,
+    pub session_count: u64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct StatsSnapshot {
+    pub rows: Vec<StatsRow>,
+    pub paused: bool,
+    pub keyboard_active: bool,
+    pub last_error: Option<String>,
+    pub log_path: String,
+}
+
+pub struct CollectorState {
+    // 统计聚合的明细数据（按时间/应用/窗口维度）
+    stats: HashMap<StatsKey, StatsValue>,
+    // 最近一次按键的时间点，用于计算间隔与会话
+    last_key_instant: Instant,
+    // 最近一次刷盘时间点，用于控制落盘频率
+    last_flush_instant: Instant,
+    // 是否暂停采集
+    paused: bool,
+    // 键盘监听是否正常工作
+    keyboard_active: bool,
+    // 最近一次错误信息（用于前端提示）
+    last_error: Option<String>,
+    // CSV 汇总文件路径
+    pub log_path: PathBuf,
+    // 应用运行日志文件路径
+    pub app_log_path: PathBuf,
+    // 明细数据的存储实现
+    storage: Box<dyn DetailStorage>,
+}
+
+pub fn new_collector_state(
+    log_path: PathBuf,
+    app_log_path: PathBuf,
+    detail_path: PathBuf,
+) -> CollectorState {
+    let now = Instant::now();
+    let storage: Box<dyn DetailStorage> = Box::new(JsonFileStorage { path: detail_path });
+    let stats = storage.load_stats().unwrap_or_default();
+    if !stats.is_empty() {
+        let _ = append_app_log(
+            &app_log_path,
+            &format!("loaded {} detail rows from storage", stats.len()),
+        );
+    }
+    CollectorState {
+        stats,
+        last_key_instant: now,
+        last_flush_instant: now,
+        paused: false,
+        keyboard_active: true,
+        last_error: None,
+        log_path,
+        app_log_path,
+        storage,
+    }
+}
+
+pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
+    let key_state = state.clone();
+    let error_state = state.clone();
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        let result = listen_keypress_macos(key_state);
+
+        #[cfg(not(target_os = "macos"))]
+        let result = rdev::listen(move |event| {
+            if let rdev::EventType::KeyPress(_) = event.event_type {
+                on_key_press(&key_state);
+            }
+        })
+        .map_err(|e| format!("{:?}", e));
+
+        if let Err(err) = result {
+            if let Ok(mut locked) = error_state.lock() {
+                locked.keyboard_active = false;
+                locked.last_error = Some(err.to_string());
+                let _ = append_app_log(
+                    &locked.app_log_path,
+                    &format!("keyboard listener error: {}", err),
+                );
+            }
+        }
+    });
+
+    let tick_state = state;
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+        if let Ok(mut locked) = tick_state.lock() {
+            let now = Instant::now();
+            if locked.paused {
+                continue;
+            }
+            if now.duration_since(locked.last_flush_instant) >= Duration::from_secs(60) {
+                locked.last_flush_instant = now;
+                let _ = locked.storage.save_stats(&locked.stats);
+                if let Ok(rows) = snapshot_rows(&locked) {
+                    let _ = write_csv(&locked.log_path, &rows);
+                }
+            }
+        }
+    });
+}
+
+fn on_key_press(state: &Arc<Mutex<CollectorState>>) {
+    if let Ok(mut locked) = state.lock() {
+        let now = Instant::now();
+        if locked.paused {
+            locked.last_key_instant = now;
+            return;
+        }
+        let delta = now.duration_since(locked.last_key_instant);
+        locked.last_key_instant = now;
+        let (app_name, window_title) = active_window_info();
+        let key = StatsKey {
+            date: current_minute(),
+            app_name,
+            window_title,
+        };
+        let entry = locked.stats.entry(key).or_insert(StatsValue {
+            active_typing_ms: 0,
+            key_count: 0,
+            session_count: 0,
+        });
+        entry.key_count += 1;
+        if delta <= Duration::from_secs(5) {
+            entry.active_typing_ms += delta.as_millis() as u64;
+        } else {
+            entry.session_count += 1;
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String> {
+    use std::ffi::c_void;
+
+    type CFMachPortRef = *const c_void;
+    type CFIndex = i64;
+    type CFAllocatorRef = *const c_void;
+    type CFRunLoopSourceRef = *const c_void;
+    type CFRunLoopRef = *const c_void;
+    type CFRunLoopMode = *const c_void;
+
+    type CGEventTapProxy = *const c_void;
+    type CGEventRef = *const c_void;
+    type CGEventTapLocation = u32;
+    type CGEventTapPlacement = u32;
+    type CGEventTapOptions = u32;
+    type CGEventMask = u64;
+    type CGEventType = u32;
+
+    const CG_EVENT_TAP_LOCATION_HID: CGEventTapLocation = 0;
+    const CG_EVENT_TAP_PLACEMENT_HEAD_INSERT: CGEventTapPlacement = 0;
+    const CG_EVENT_TAP_OPTION_LISTEN_ONLY: CGEventTapOptions = 1;
+    const CG_EVENT_TYPE_KEY_DOWN: CGEventType = 10;
+
+    extern "C" {
+        fn CGEventTapCreate(
+            tap: CGEventTapLocation,
+            place: CGEventTapPlacement,
+            options: CGEventTapOptions,
+            events_of_interest: CGEventMask,
+            callback: unsafe extern "C" fn(
+                CGEventTapProxy,
+                CGEventType,
+                CGEventRef,
+                *mut c_void,
+            ) -> CGEventRef,
+            user_info: *mut c_void,
+        ) -> CFMachPortRef;
+        fn CFMachPortCreateRunLoopSource(
+            allocator: CFAllocatorRef,
+            port: CFMachPortRef,
+            order: CFIndex,
+        ) -> CFRunLoopSourceRef;
+        fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+        fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFRunLoopMode);
+        fn CFRunLoopRun();
+        fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+        static kCFRunLoopCommonModes: CFRunLoopMode;
+    }
+
+    unsafe extern "C" fn callback(
+        _proxy: CGEventTapProxy,
+        type_: CGEventType,
+        event: CGEventRef,
+        user_info: *mut c_void,
+    ) -> CGEventRef {
+        if type_ == CG_EVENT_TYPE_KEY_DOWN {
+            let state = &*(user_info as *const Arc<Mutex<CollectorState>>);
+            on_key_press(state);
+        }
+        event
+    }
+
+    let user_info = Box::into_raw(Box::new(state)) as *mut c_void;
+    unsafe {
+        let tap = CGEventTapCreate(
+            CG_EVENT_TAP_LOCATION_HID,
+            CG_EVENT_TAP_PLACEMENT_HEAD_INSERT,
+            CG_EVENT_TAP_OPTION_LISTEN_ONLY,
+            1u64 << CG_EVENT_TYPE_KEY_DOWN,
+            callback,
+            user_info,
+        );
+        if tap.is_null() {
+            return Err("EventTapCreate failed (need Accessibility permission?)".to_string());
+        }
+        let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+        if source.is_null() {
+            return Err("CFMachPortCreateRunLoopSource failed".to_string());
+        }
+        let run_loop = CFRunLoopGetCurrent();
+        CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
+        CGEventTapEnable(tap, true);
+        CFRunLoopRun();
+    }
+    Ok(())
+}
+
+pub fn snapshot_rows(state: &CollectorState) -> Result<Vec<StatsRow>, String> {
+    let mut rows: Vec<StatsRow> = state
+        .stats
+        .iter()
+        .map(|(key, value)| StatsRow {
+            date: key.date.clone(),
+            app_name: key.app_name.clone(),
+            window_title: key.window_title.clone(),
+            active_typing_ms: value.active_typing_ms,
+            key_count: value.key_count,
+            session_count: value.session_count,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        (&a.date, &a.app_name, &a.window_title, a.active_typing_ms).cmp(&(
+            &b.date,
+            &b.app_name,
+            &b.window_title,
+            b.active_typing_ms,
+        ))
+    });
+    Ok(rows)
+}
+
+pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
+    let rows = snapshot_rows(state).unwrap_or_default();
+    StatsSnapshot {
+        rows,
+        paused: state.paused,
+        keyboard_active: state.keyboard_active,
+        last_error: state.last_error.clone(),
+        log_path: state.log_path.to_string_lossy().to_string(),
+    }
+}
+
+pub fn set_paused(state: &mut CollectorState, paused: bool) {
+    state.paused = paused;
+}
+
+pub fn clear_stats(state: &mut CollectorState) {
+    state.stats.clear();
+    let _ = state.storage.save_stats(&state.stats);
+}
+
+fn current_minute() -> String {
+    Local::now().format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn active_window_info() -> (String, String) {
+    if let Ok(window) = active_win_pos_rs::get_active_window() {
+        let app = window.app_name;
+        let title = window.title;
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(bundle_id) = bundle_id_from_path(&window.process_path) {
+                return (bundle_id, title);
+            }
+        }
+        return (app, title);
+    }
+    ("Unknown".to_string(), "".to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn bundle_id_from_path(path: &std::path::Path) -> Option<String> {
+    let mut bundle_path: Option<PathBuf> = None;
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component);
+        if let Some(name) = current.file_name().and_then(|v| v.to_str()) {
+            if name.ends_with(".app") {
+                bundle_path = Some(current.clone());
+            }
+        }
+    }
+    let bundle_path = bundle_path?;
+    let info_plist = bundle_path.join("Contents").join("Info.plist");
+    let value = plist::Value::from_file(info_plist).ok()?;
+    match value.as_dictionary() {
+        Some(dict) => dict
+            .get("CFBundleIdentifier")
+            .and_then(|v| v.as_string())
+            .map(|v| v.to_string()),
+        None => None,
+    }
+}
+
+fn write_csv(path: &PathBuf, rows: &[StatsRow]) -> Result<(), String> {
+    let mut file = File::create(path).map_err(|e| e.to_string())?;
+    writeln!(
+        file,
+        "date,app_name,window_title,active_typing_ms,key_count,session_count"
+    )
+    .map_err(|e| e.to_string())?;
+    for row in rows {
+        let line = format!(
+            "{},{},{},{},{},{}",
+            escape_csv(&row.date),
+            escape_csv(&row.app_name),
+            escape_csv(&row.window_title),
+            row.active_typing_ms,
+            row.key_count,
+            row.session_count
+        );
+        writeln!(file, "{}", line).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn escape_csv(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        let escaped = value.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        value.to_string()
+    }
+}
+
+pub fn append_app_log(path: &PathBuf, message: &str) -> Result<(), String> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    let line = format!("{} {}", Local::now().format("%Y-%m-%d %H:%M:%S"), message);
+    writeln!(file, "{}", line).map_err(|e| e.to_string())?;
+    print_line_if_dev(&line);
+    Ok(())
+}
+
+fn print_line_if_dev(line: &str) {
+    if cfg!(debug_assertions) {
+        println!("[TypePulse] {}", line);
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StoredRow {
+    date: String,
+    app_name: String,
+    window_title: String,
+    active_typing_ms: u64,
+    key_count: u64,
+    session_count: u64,
+}
+
+trait DetailStorage: Send + Sync {
+    fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String>;
+    fn save_stats(&self, stats: &HashMap<StatsKey, StatsValue>) -> Result<(), String>;
+}
+
+struct JsonFileStorage {
+    path: PathBuf,
+}
+
+impl JsonFileStorage {
+    fn stats_to_rows(stats: &HashMap<StatsKey, StatsValue>) -> Vec<StoredRow> {
+        let mut rows: Vec<StoredRow> = stats
+            .iter()
+            .map(|(key, value)| StoredRow {
+                date: key.date.clone(),
+                app_name: key.app_name.clone(),
+                window_title: key.window_title.clone(),
+                active_typing_ms: value.active_typing_ms,
+                key_count: value.key_count,
+                session_count: value.session_count,
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            (&a.date, &a.app_name, &a.window_title).cmp(&(&b.date, &b.app_name, &b.window_title))
+        });
+        rows
+    }
+
+    fn rows_to_stats(rows: Vec<StoredRow>) -> HashMap<StatsKey, StatsValue> {
+        let mut stats: HashMap<StatsKey, StatsValue> = HashMap::new();
+        for row in rows {
+            let key = StatsKey {
+                date: row.date,
+                app_name: row.app_name,
+                window_title: row.window_title,
+            };
+            let entry = stats.entry(key).or_insert(StatsValue {
+                active_typing_ms: 0,
+                key_count: 0,
+                session_count: 0,
+            });
+            entry.active_typing_ms += row.active_typing_ms;
+            entry.key_count += row.key_count;
+            entry.session_count += row.session_count;
+        }
+        stats
+    }
+}
+
+impl DetailStorage for JsonFileStorage {
+    fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String> {
+        let content = match std::fs::read_to_string(&self.path) {
+            Ok(v) => v,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+            Err(err) => return Err(err.to_string()),
+        };
+        let rows: Vec<StoredRow> = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        Ok(Self::rows_to_stats(rows))
+    }
+
+    fn save_stats(&self, stats: &HashMap<StatsKey, StatsValue>) -> Result<(), String> {
+        if let Some(parent) = self.path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let rows = Self::stats_to_rows(stats);
+        let bytes = serde_json::to_vec(&rows).map_err(|e| e.to_string())?;
+        let tmp_path = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_path, &self.path).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
