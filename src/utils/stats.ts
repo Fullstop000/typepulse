@@ -1,4 +1,4 @@
-import { StatsRow, TrendGranularity, TrendPoint } from "../types";
+import { StatsRow, TrendGranularity, TrendSeries } from "../types";
 
 export const parseRowDate = (value: string) =>
   value.includes(" ")
@@ -12,20 +12,6 @@ const minuteKeyFromDate = (date: Date) => {
   const hh = String(date.getHours()).padStart(2, "0");
   const min = String(date.getMinutes()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
-};
-
-const bucketLabel = (date: Date, bucketMinutes: number) => {
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  if (bucketMinutes >= 1440) {
-    return `${mm}-${dd}`;
-  }
-  if (bucketMinutes >= 60) {
-    return `${mm}-${dd} ${hh}:00`;
-  }
-  return `${hh}:${min}`;
 };
 
 const floorToBucket = (date: Date, bucketMinutes: number) => {
@@ -54,7 +40,7 @@ export const formatMs = (ms: number) => {
 export const buildTrendSeries = (
   rows: StatsRow[],
   granularity: TrendGranularity,
-): TrendPoint[] => {
+): TrendSeries => {
   const config = {
     "1m": { rangeMinutes: 20, bucketMinutes: 1 },
     "5m": { rangeMinutes: 60, bucketMinutes: 5 },
@@ -67,7 +53,7 @@ export const buildTrendSeries = (
   const start = new Date(
     end.getTime() - (bucketCount - 1) * config.bucketMinutes * 60 * 1000,
   );
-  const buckets = new Map<string, number>();
+  const buckets = new Map<string, { activeMs: number; keyCount: number }>();
   for (const row of rows) {
     const rowDate = parseRowDate(row.date);
     if (rowDate < start || rowDate > end) {
@@ -75,19 +61,23 @@ export const buildTrendSeries = (
     }
     const bucketDate = floorToBucket(rowDate, config.bucketMinutes);
     const key = minuteKeyFromDate(bucketDate);
-    buckets.set(key, (buckets.get(key) ?? 0) + row.active_typing_ms);
+    const current = buckets.get(key) ?? { activeMs: 0, keyCount: 0 };
+    current.activeMs += row.active_typing_ms;
+    current.keyCount += row.key_count;
+    buckets.set(key, current);
   }
-  const series: TrendPoint[] = [];
+  const timestamps: number[] = [];
+  const activeSeconds: number[] = [];
+  const keyCounts: number[] = [];
   for (let i = 0; i < bucketCount; i += 1) {
     const pointDate = new Date(
       start.getTime() + i * config.bucketMinutes * 60 * 1000,
     );
     const key = minuteKeyFromDate(pointDate);
-    const valueMs = buckets.get(key) ?? 0;
-    series.push({
-      label: bucketLabel(pointDate, config.bucketMinutes),
-      value: Math.round(valueMs / 1000),
-    });
+    const value = buckets.get(key) ?? { activeMs: 0, keyCount: 0 };
+    timestamps.push(Math.floor(pointDate.getTime() / 1000));
+    activeSeconds.push(Math.round(value.activeMs / 1000));
+    keyCounts.push(value.keyCount);
   }
-  return series;
+  return { timestamps, activeSeconds, keyCounts };
 };

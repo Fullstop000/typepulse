@@ -18,7 +18,7 @@ function App() {
   const [appLogText, setAppLogText] = useState("");
   const [filterDays, setFilterDays] = useState<1 | 7>(1);
   const [trendGranularity, setTrendGranularity] =
-    useState<TrendGranularity>("1m");
+    useState<TrendGranularity>("5m");
 
   useEffect(() => {
     let mounted = true;

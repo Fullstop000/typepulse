@@ -30,7 +30,8 @@ export type Totals = {
 
 export type TrendGranularity = "1m" | "5m" | "1h" | "1d";
 
-export type TrendPoint = {
-  label: string;
-  value: number;
+export type TrendSeries = {
+  timestamps: number[];
+  activeSeconds: number[];
+  keyCounts: number[];
 };

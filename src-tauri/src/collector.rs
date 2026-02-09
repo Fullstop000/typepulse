@@ -8,20 +8,22 @@ use std::{
 };
 
 use chrono::Local;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+use crate::storage::{DetailStorage, JsonFileStorage};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
-struct StatsKey {
-    date: String,
-    app_name: String,
-    window_title: String,
+pub(crate) struct StatsKey {
+    pub(crate) date: String,
+    pub(crate) app_name: String,
+    pub(crate) window_title: String,
 }
 
 #[derive(Clone)]
-struct StatsValue {
-    active_typing_ms: u64,
-    key_count: u64,
-    session_count: u64,
+pub(crate) struct StatsValue {
+    pub(crate) active_typing_ms: u64,
+    pub(crate) key_count: u64,
+    pub(crate) session_count: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -387,88 +389,5 @@ pub fn append_app_log(path: &PathBuf, message: &str) -> Result<(), String> {
 fn print_line_if_dev(line: &str) {
     if cfg!(debug_assertions) {
         println!("[TypePulse] {}", line);
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StoredRow {
-    date: String,
-    app_name: String,
-    window_title: String,
-    active_typing_ms: u64,
-    key_count: u64,
-    session_count: u64,
-}
-
-trait DetailStorage: Send + Sync {
-    fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String>;
-    fn save_stats(&self, stats: &HashMap<StatsKey, StatsValue>) -> Result<(), String>;
-}
-
-struct JsonFileStorage {
-    path: PathBuf,
-}
-
-impl JsonFileStorage {
-    fn stats_to_rows(stats: &HashMap<StatsKey, StatsValue>) -> Vec<StoredRow> {
-        let mut rows: Vec<StoredRow> = stats
-            .iter()
-            .map(|(key, value)| StoredRow {
-                date: key.date.clone(),
-                app_name: key.app_name.clone(),
-                window_title: key.window_title.clone(),
-                active_typing_ms: value.active_typing_ms,
-                key_count: value.key_count,
-                session_count: value.session_count,
-            })
-            .collect();
-        rows.sort_by(|a, b| {
-            (&a.date, &a.app_name, &a.window_title).cmp(&(&b.date, &b.app_name, &b.window_title))
-        });
-        rows
-    }
-
-    fn rows_to_stats(rows: Vec<StoredRow>) -> HashMap<StatsKey, StatsValue> {
-        let mut stats: HashMap<StatsKey, StatsValue> = HashMap::new();
-        for row in rows {
-            let key = StatsKey {
-                date: row.date,
-                app_name: row.app_name,
-                window_title: row.window_title,
-            };
-            let entry = stats.entry(key).or_insert(StatsValue {
-                active_typing_ms: 0,
-                key_count: 0,
-                session_count: 0,
-            });
-            entry.active_typing_ms += row.active_typing_ms;
-            entry.key_count += row.key_count;
-            entry.session_count += row.session_count;
-        }
-        stats
-    }
-}
-
-impl DetailStorage for JsonFileStorage {
-    fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String> {
-        let content = match std::fs::read_to_string(&self.path) {
-            Ok(v) => v,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
-            Err(err) => return Err(err.to_string()),
-        };
-        let rows: Vec<StoredRow> = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-        Ok(Self::rows_to_stats(rows))
-    }
-
-    fn save_stats(&self, stats: &HashMap<StatsKey, StatsValue>) -> Result<(), String> {
-        if let Some(parent) = self.path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let rows = Self::stats_to_rows(stats);
-        let bytes = serde_json::to_vec(&rows).map_err(|e| e.to_string())?;
-        let tmp_path = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp_path, &self.path).map_err(|e| e.to_string())?;
-        Ok(())
     }
 }

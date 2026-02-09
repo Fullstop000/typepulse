@@ -16,6 +16,7 @@ use tauri::{
 use tauri_plugin_opener::OpenerExt;
 
 mod collector;
+mod storage;
 
 struct AppState {
     inner: Arc<Mutex<collector::CollectorState>>,
