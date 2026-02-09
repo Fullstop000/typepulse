@@ -1,6 +1,6 @@
 # TypePulse
 
-TypePulse is a local typing analytics tool that tracks active typing time, key counts, and session changes, with insights grouped by app and time range.
+TypePulse is a lightweight, privacy-friendly, fully local typing analytics tool.
 
 ## Features
 

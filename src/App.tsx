@@ -155,6 +155,8 @@ function App() {
           ) : (
             <SettingsPage
               paused={snapshot.paused}
+              keyboardActive={snapshot.keyboard_active}
+              lastError={snapshot.last_error}
               onTogglePause={handleTogglePause}
             />
           )}

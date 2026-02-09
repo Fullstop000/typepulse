@@ -13,6 +13,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager, Wry,
 };
+use tauri_plugin_opener::OpenerExt;
 
 mod collector;
 
@@ -118,6 +119,20 @@ fn get_app_log_tail(state: tauri::State<AppState>) -> String {
     "".to_string()
 }
 
+#[tauri::command]
+fn open_data_dir(state: tauri::State<AppState>, app: tauri::AppHandle) -> Result<(), String> {
+    let path = if let Ok(locked) = state.inner.lock() {
+        locked.log_path.clone()
+    } else {
+        return Err("state lock failed".to_string());
+    };
+    let data_dir = path.parent().unwrap_or(path.as_path());
+    let _ = std::fs::create_dir_all(data_dir);
+    app.opener()
+        .open_path(data_dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -162,7 +177,8 @@ pub fn run() {
             get_log_path,
             get_app_log_path,
             get_log_tail,
-            get_app_log_tail
+            get_app_log_tail,
+            open_data_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
