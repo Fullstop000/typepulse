@@ -8,7 +8,8 @@ type AppTableProps = {
 function AppTable({ rows }: AppTableProps) {
   return (
     <section className="card">
-      <h2>按应用明细</h2>
+      <h2>详细记录</h2>
+      <div className="section-subtitle">仅展示最近 1 天内的数据</div>
       <div className="table">
         <div className="table-header">
           <span>应用</span>

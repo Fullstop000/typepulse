@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fs,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -9,6 +9,7 @@ use collector::{
     clear_stats, new_collector_state, set_paused, snapshot, start_collector, StatsSnapshot,
 };
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Manager, Wry,
@@ -25,6 +26,7 @@ struct AppState {
 type AppMenuItem = MenuItem<Wry>;
 
 struct TraySummaryItems {
+    _tray_icon: tauri::tray::TrayIcon<Wry>,
     status_item: AppMenuItem,
     keyboard_item: AppMenuItem,
     toggle_item: AppMenuItem,
@@ -134,10 +136,54 @@ fn open_data_dir(state: tauri::State<AppState>, app: tauri::AppHandle) -> Result
         .map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn get_data_dir_size(state: tauri::State<AppState>) -> u64 {
+    let path = if let Ok(locked) = state.inner.lock() {
+        locked.log_path.clone()
+    } else {
+        return 0;
+    };
+    let data_dir = path.parent().unwrap_or(path.as_path()).to_path_buf();
+    let _ = fs::create_dir_all(&data_dir);
+    folder_size(&data_dir)
+}
+
+fn folder_size(path: &PathBuf) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![path.clone()];
+    while let Some(current) = stack.pop() {
+        let entries = match fs::read_dir(&current) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            if metadata.is_dir() {
+                stack.push(path);
+            } else {
+                total += metadata.len();
+            }
+        }
+    }
+    total
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(|app| {
             let data_dir = if cfg!(debug_assertions) {
                 env::current_dir()
@@ -179,7 +225,8 @@ pub fn run() {
             get_app_log_path,
             get_log_tail,
             get_app_log_tail,
-            open_data_dir
+            open_data_dir,
+            get_data_dir_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -254,13 +301,21 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon().cloned() {
-        builder = builder.icon(icon).icon_as_template(true);
+    let tray_icon = Image::from_bytes(include_bytes!("../icons/l_white.png"))
+        .ok()
+        .or_else(|| app.default_window_icon().cloned());
+    if let Some(icon) = tray_icon {
+        builder = builder.icon(icon);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.icon_as_template(true);
     }
 
-    builder.build(app)?;
+    let tray_icon = builder.build(app)?;
 
     Ok(TraySummaryItems {
+        _tray_icon: tray_icon,
         status_item,
         keyboard_item,
         toggle_item,
