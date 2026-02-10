@@ -1,3 +1,5 @@
+import { Box, Button, ButtonGroup, Flex, Text } from "@chakra-ui/react";
+
 type FilterBarProps = {
   filterDays: 1 | 7;
   onChange: (value: 1 | 7) => void;
@@ -5,23 +7,27 @@ type FilterBarProps = {
 
 function FilterBar({ filterDays, onChange }: FilterBarProps) {
   return (
-    <section className="card filter-bar">
-      <div className="label">时间范围</div>
-      <div className="row">
-        <button
-          onClick={() => onChange(1)}
-          className={filterDays === 1 ? "tab active" : "tab"}
-        >
-          最近1天
-        </button>
-        <button
-          onClick={() => onChange(7)}
-          className={filterDays === 7 ? "tab active" : "tab"}
-        >
-          最近7天
-        </button>
-      </div>
-    </section>
+    <Box bg="white" borderRadius="16px" p="5" boxShadow="sm">
+      <Flex justify="space-between" align="center" gap="3" flexWrap="wrap">
+        <Text fontWeight="semibold">时间范围</Text>
+        <ButtonGroup size="sm" variant="outline" attached>
+          <Button
+            colorPalette={filterDays === 1 ? "blue" : "gray"}
+            variant={filterDays === 1 ? "solid" : "outline"}
+            onClick={() => onChange(1)}
+          >
+            最近1天
+          </Button>
+          <Button
+            colorPalette={filterDays === 7 ? "blue" : "gray"}
+            variant={filterDays === 7 ? "solid" : "outline"}
+            onClick={() => onChange(7)}
+          >
+            最近7天
+          </Button>
+        </ButtonGroup>
+      </Flex>
+    </Box>
   );
 }
 

@@ -1,40 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { Box, Container, Flex, Spinner, Text } from "@chakra-ui/react";
 import LogsPage from "./components/LogsPage";
 import PageHeader from "./components/PageHeader";
 import SettingsPage from "./components/SettingsPage";
 import Sidebar from "./components/Sidebar";
 import StatsPage from "./components/StatsPage";
 import { SettingSection } from "./components/settings/types";
-import {
-  GroupedRow,
-  Snapshot,
-  Totals,
-  TrendGranularity,
-} from "./types";
+import { GroupedRow, Snapshot, Totals, TrendGranularity } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">(
-    "stats",
-  );
+  const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">("stats");
   const [activeSettingsSection, setActiveSettingsSection] =
     useState<SettingSection>("capture");
   const [typingLogText, setTypingLogText] = useState("");
   const [appLogText, setAppLogText] = useState("");
   const [filterDays, setFilterDays] = useState<1 | 7>(1);
-  const [trendGranularity, setTrendGranularity] =
-    useState<TrendGranularity>("5m");
+  const [trendGranularity, setTrendGranularity] = useState<TrendGranularity>("5m");
 
   useEffect(() => {
     let mounted = true;
     const fetchSnapshot = async () => {
       const data = await invoke<Snapshot>("get_snapshot");
-      if (mounted) {
-        setSnapshot(data);
-      }
+      if (mounted) setSnapshot(data);
     };
     fetchSnapshot();
     const id = setInterval(fetchSnapshot, 1000);
@@ -45,9 +35,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "logs") {
-      return;
-    }
+    if (activeTab !== "logs") return;
     let mounted = true;
     const fetchLog = async () => {
       const [typingData, appData] = await Promise.all([
@@ -67,18 +55,14 @@ function App() {
     };
   }, [activeTab]);
 
-  const pageTitle =
-    activeTab === "stats" ? "数据" : activeTab === "logs" ? "日志" : "设置";
+  const pageTitle = activeTab === "stats" ? "数据" : activeTab === "logs" ? "日志" : "设置";
 
   const filteredRows = useMemo(() => {
     const rows = snapshot?.rows ?? [];
     const cutoff = new Date();
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() - (filterDays - 1));
-    return rows.filter((row) => {
-      const rowDate = parseRowDate(row.date);
-      return rowDate >= cutoff;
-    });
+    return rows.filter((row) => parseRowDate(row.date) >= cutoff);
   }, [snapshot, filterDays]);
 
   const groupedRows = useMemo(() => {
@@ -95,9 +79,7 @@ function App() {
       entry.session_count += row.session_count;
       grouped.set(row.app_name, entry);
     }
-    return Array.from(grouped.values()).sort(
-      (a, b) => b.active_typing_ms - a.active_typing_ms,
-    );
+    return Array.from(grouped.values()).sort((a, b) => b.active_typing_ms - a.active_typing_ms);
   }, [filteredRows]);
 
   const totals = useMemo<Totals>(
@@ -120,20 +102,23 @@ function App() {
   );
 
   return (
-    <div className="layout">
+    <Flex minH="100vh" bg="#f8fafc">
       <Sidebar
         activeTab={activeTab}
         activeSettingsSection={activeSettingsSection}
         onChange={setActiveTab}
         onSettingsSectionChange={setActiveSettingsSection}
       />
-      <main className="content">
-        <div className="content-inner">
+      <Box flex="1" overflowY="auto" px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
+        <Container maxW="1100px" px="0" display="flex" flexDirection="column" gap="5">
           {snapshot ? <PageHeader title={pageTitle} /> : null}
           {!snapshot ? (
-            <section className="card">
-              <p>加载中…</p>
-            </section>
+            <Box bg="white" borderRadius="16px" p="6" boxShadow="0 10px 30px rgba(15,23,42,0.08)">
+              <Flex align="center" gap="2">
+                <Spinner size="sm" />
+                <Text>加载中…</Text>
+              </Flex>
+            </Box>
           ) : activeTab === "stats" ? (
             <StatsPage
               snapshot={snapshot}
@@ -149,25 +134,15 @@ function App() {
             <LogsPage
               typingLogText={typingLogText}
               appLogText={appLogText}
-              onRefreshTyping={async () => {
-                const data = await invoke<string>("get_log_tail");
-                setTypingLogText(data);
-              }}
-              onRefreshApp={async () => {
-                const data = await invoke<string>("get_app_log_tail");
-                setAppLogText(data);
-              }}
+              onRefreshTyping={async () => setTypingLogText(await invoke<string>("get_log_tail"))}
+              onRefreshApp={async () => setAppLogText(await invoke<string>("get_app_log_tail"))}
             />
           ) : (
-            <SettingsPage
-              section={activeSettingsSection}
-              snapshot={snapshot}
-              onSnapshotChange={setSnapshot}
-            />
+            <SettingsPage section={activeSettingsSection} snapshot={snapshot} onSnapshotChange={setSnapshot} />
           )}
-        </div>
-      </main>
-    </div>
+        </Container>
+      </Box>
+    </Flex>
   );
 }
 

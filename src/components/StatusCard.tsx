@@ -1,3 +1,4 @@
+import { Badge, Box, Flex, Stack, Text } from "@chakra-ui/react";
 import { Snapshot } from "../types";
 
 type StatusCardProps = {
@@ -6,25 +7,27 @@ type StatusCardProps = {
 
 function StatusCard({ snapshot }: StatusCardProps) {
   return (
-    <section className="card">
-      <div className="status">
-        <div>
-          <span className="label">键盘监听</span>
-          <span className={snapshot.keyboard_active ? "ok" : "bad"}>
+    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+      <Flex gap="6" flexWrap="wrap">
+        <Stack gap="1" minW="160px">
+          <Text fontSize="sm" color="gray.600">键盘监听</Text>
+          <Badge colorPalette={snapshot.keyboard_active ? "green" : "red"} width="fit-content">
             {snapshot.keyboard_active ? "已启用" : "未启用"}
-          </span>
-        </div>
-        <div>
-          <span className="label">采集状态</span>
-          <span className={snapshot.paused ? "bad" : "ok"}>
+          </Badge>
+        </Stack>
+        <Stack gap="1" minW="160px">
+          <Text fontSize="sm" color="gray.600">采集状态</Text>
+          <Badge colorPalette={snapshot.paused ? "red" : "green"} width="fit-content">
             {snapshot.paused ? "已暂停" : "运行中"}
-          </span>
-        </div>
-      </div>
+          </Badge>
+        </Stack>
+      </Flex>
       {snapshot.last_error ? (
-        <p className="error">{snapshot.last_error}</p>
+        <Text mt="4" color="red.600" fontSize="sm">
+          {snapshot.last_error}
+        </Text>
       ) : null}
-    </section>
+    </Box>
   );
 }
 
