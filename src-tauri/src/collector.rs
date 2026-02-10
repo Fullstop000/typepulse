@@ -10,7 +10,7 @@ use std::{
 use chrono::Local;
 use serde::Serialize;
 
-use crate::app_config::AppConfig;
+use crate::app_config::{AppConfig, MenuBarDisplayMode};
 use crate::storage::{DetailStorage, JsonFileStorage};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -43,6 +43,7 @@ pub struct StatsSnapshot {
     pub paused: bool,
     pub keyboard_active: bool,
     pub ignore_key_combos: bool,
+    pub tray_display_mode: String,
     pub last_error: Option<String>,
     pub log_path: String,
 }
@@ -66,6 +67,8 @@ pub struct CollectorState {
     keyboard_active: bool,
     // 是否忽略组合键（ctrl/alt/shift/cmd/fn + 其他键）
     ignore_key_combos: bool,
+    // 菜单栏显示模式
+    menu_bar_display_mode: MenuBarDisplayMode,
     // 最近一次错误信息（用于前端提示）
     last_error: Option<String>,
     // CSV 汇总文件路径
@@ -146,6 +149,7 @@ pub fn new_collector_state(
         paused: false,
         keyboard_active: true,
         ignore_key_combos: config.ignore_key_combos,
+        menu_bar_display_mode: config.menu_bar_display_mode,
         last_error: None,
         log_path,
         app_log_path,
@@ -163,12 +167,10 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
         let result = listen_keypress_macos(key_state);
 
         #[cfg(not(target_os = "macos"))]
-        let result = rdev::listen(move |event| {
-            match event.event_type {
-                rdev::EventType::KeyPress(key) => on_key_event_non_macos(&key_state, key, true),
-                rdev::EventType::KeyRelease(key) => on_key_event_non_macos(&key_state, key, false),
-                _ => {}
-            }
+        let result = rdev::listen(move |event| match event.event_type {
+            rdev::EventType::KeyPress(key) => on_key_event_non_macos(&key_state, key, true),
+            rdev::EventType::KeyRelease(key) => on_key_event_non_macos(&key_state, key, false),
+            _ => {}
         })
         .map_err(|e| format!("{:?}", e));
 
@@ -246,11 +248,7 @@ fn should_ignore_keypress(ignore_key_combos: bool, is_key_combo: bool) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn on_key_event_non_macos(
-    state: &Arc<Mutex<CollectorState>>,
-    key: rdev::Key,
-    pressed: bool,
-) {
+fn on_key_event_non_macos(state: &Arc<Mutex<CollectorState>>, key: rdev::Key, pressed: bool) {
     let (is_modifier_key, has_modifier_before) = if let Ok(mut locked) = state.lock() {
         let is_modifier_key = ModifierState::is_modifier_key(key);
         let has_modifier_before = locked.modifier_state.has_any_modifier();
@@ -399,6 +397,7 @@ pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
         paused: state.paused,
         keyboard_active: state.keyboard_active,
         ignore_key_combos: state.ignore_key_combos,
+        tray_display_mode: state.menu_bar_display_mode.as_str().to_string(),
         last_error: state.last_error.clone(),
         log_path: state.log_path.to_string_lossy().to_string(),
     }
@@ -410,6 +409,10 @@ pub fn set_paused(state: &mut CollectorState, paused: bool) {
 
 pub fn set_ignore_key_combos(state: &mut CollectorState, ignore_key_combos: bool) {
     state.ignore_key_combos = ignore_key_combos;
+}
+
+pub fn set_menu_bar_display_mode(state: &mut CollectorState, mode: MenuBarDisplayMode) {
+    state.menu_bar_display_mode = mode;
 }
 
 pub fn clear_stats(state: &mut CollectorState) {
@@ -427,6 +430,7 @@ mod tests {
         set_ignore_key_combos, should_ignore_keypress, snapshot, snapshot_rows, CollectorState,
         StatsKey, StatsValue,
     };
+    use crate::app_config::MenuBarDisplayMode;
     use crate::storage::JsonFileStorage;
     use std::{
         collections::HashMap,
@@ -446,6 +450,7 @@ mod tests {
             paused: false,
             keyboard_active: true,
             ignore_key_combos: false,
+            menu_bar_display_mode: MenuBarDisplayMode::IconText,
             last_error: None,
             log_path: PathBuf::from("log.csv"),
             app_log_path: PathBuf::from("app.log"),

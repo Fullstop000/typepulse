@@ -6,7 +6,13 @@ import PageHeader from "./components/PageHeader";
 import SettingsPage from "./components/SettingsPage";
 import Sidebar from "./components/Sidebar";
 import StatsPage from "./components/StatsPage";
-import { GroupedRow, Snapshot, Totals, TrendGranularity } from "./types";
+import {
+  GroupedRow,
+  MenuBarDisplayMode,
+  Snapshot,
+  Totals,
+  TrendGranularity,
+} from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
 function App() {
@@ -128,6 +134,13 @@ function App() {
     setSnapshot(data);
   };
 
+  const handleTrayDisplayModeChange = async (mode: MenuBarDisplayMode) => {
+    const data = await invoke<Snapshot>("update_menu_bar_display_mode", {
+      mode,
+    });
+    setSnapshot(data);
+  };
+
   return (
     <div className="layout">
       <Sidebar activeTab={activeTab} onChange={setActiveTab} />
@@ -167,9 +180,11 @@ function App() {
               paused={snapshot.paused}
               keyboardActive={snapshot.keyboard_active}
               ignoreKeyCombos={snapshot.ignore_key_combos}
+              trayDisplayMode={snapshot.tray_display_mode}
               lastError={snapshot.last_error}
               onTogglePause={handleTogglePause}
               onToggleIgnoreKeyCombos={handleToggleIgnoreKeyCombos}
+              onTrayDisplayModeChange={handleTrayDisplayModeChange}
             />
           )}
         </div>
