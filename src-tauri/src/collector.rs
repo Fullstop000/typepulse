@@ -10,6 +10,7 @@ use std::{
 use chrono::Local;
 use serde::Serialize;
 
+use crate::app_config::AppConfig;
 use crate::storage::{DetailStorage, JsonFileStorage};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -53,6 +54,12 @@ pub struct CollectorState {
     last_key_instant: Instant,
     // 最近一次刷盘时间点，用于控制落盘频率
     last_flush_instant: Instant,
+    // 采集线程轮询周期
+    collector_tick_interval: Duration,
+    // 统计刷盘周期
+    flush_interval: Duration,
+    // 会话判定阈值
+    session_gap: Duration,
     // 是否暂停采集
     paused: bool,
     // 键盘监听是否正常工作
@@ -118,7 +125,7 @@ pub fn new_collector_state(
     log_path: PathBuf,
     app_log_path: PathBuf,
     detail_path: PathBuf,
-    ignore_key_combos: bool,
+    config: &AppConfig,
 ) -> CollectorState {
     let now = Instant::now();
     let storage: Box<dyn DetailStorage> = Box::new(JsonFileStorage { path: detail_path });
@@ -133,9 +140,12 @@ pub fn new_collector_state(
         stats,
         last_key_instant: now,
         last_flush_instant: now,
+        collector_tick_interval: config.collector_tick_interval(),
+        flush_interval: config.flush_interval(),
+        session_gap: config.session_gap(),
         paused: false,
         keyboard_active: true,
-        ignore_key_combos,
+        ignore_key_combos: config.ignore_key_combos,
         last_error: None,
         log_path,
         app_log_path,
@@ -176,13 +186,18 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
 
     let tick_state = state;
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
+        let tick_interval = if let Ok(locked) = tick_state.lock() {
+            locked.collector_tick_interval
+        } else {
+            Duration::from_secs(1)
+        };
+        std::thread::sleep(tick_interval);
         if let Ok(mut locked) = tick_state.lock() {
             let now = Instant::now();
             if locked.paused {
                 continue;
             }
-            if now.duration_since(locked.last_flush_instant) >= Duration::from_secs(60) {
+            if now.duration_since(locked.last_flush_instant) >= locked.flush_interval {
                 locked.last_flush_instant = now;
                 let _ = locked.storage.save_stats(&locked.stats);
                 if let Ok(rows) = snapshot_rows(&locked) {
@@ -211,13 +226,14 @@ fn on_key_press(state: &Arc<Mutex<CollectorState>>, is_key_combo: bool) {
             app_name,
             window_title,
         };
+        let session_gap = locked.session_gap;
         let entry = locked.stats.entry(key).or_insert(StatsValue {
             active_typing_ms: 0,
             key_count: 0,
             session_count: 0,
         });
         entry.key_count += 1;
-        if delta <= Duration::from_secs(5) {
+        if delta <= session_gap {
             entry.active_typing_ms += delta.as_millis() as u64;
         } else {
             entry.session_count += 1;
@@ -412,7 +428,11 @@ mod tests {
         StatsKey, StatsValue,
     };
     use crate::storage::JsonFileStorage;
-    use std::{collections::HashMap, path::PathBuf, time::Instant};
+    use std::{
+        collections::HashMap,
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
 
     fn build_state(stats: HashMap<StatsKey, StatsValue>) -> CollectorState {
         let now = Instant::now();
@@ -420,6 +440,9 @@ mod tests {
             stats,
             last_key_instant: now,
             last_flush_instant: now,
+            collector_tick_interval: Duration::from_secs(1),
+            flush_interval: Duration::from_secs(60),
+            session_gap: Duration::from_secs(5),
             paused: false,
             keyboard_active: true,
             ignore_key_combos: false,

@@ -14,12 +14,6 @@ struct StoredRow {
     session_count: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub(crate) struct AppConfig {
-    #[serde(default)]
-    pub(crate) ignore_key_combos: bool,
-}
-
 pub(crate) trait DetailStorage: Send + Sync {
     fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String>;
     fn save_stats(&self, stats: &HashMap<StatsKey, StatsValue>) -> Result<(), String>;
@@ -168,25 +162,6 @@ impl DetailStorage for JsonFileStorage {
         let _ = std::fs::remove_file(&self.path);
         Ok(())
     }
-}
-
-pub(crate) fn load_app_config(path: &PathBuf) -> Result<AppConfig, String> {
-    match std::fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).map_err(|e| e.to_string()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AppConfig::default()),
-        Err(err) => Err(err.to_string()),
-    }
-}
-
-pub(crate) fn save_app_config(path: &PathBuf, config: &AppConfig) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let bytes = serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?;
-    let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp_path, path).map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 #[cfg(test)]

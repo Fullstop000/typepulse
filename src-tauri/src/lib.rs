@@ -2,14 +2,13 @@ use std::{
     env, fs,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
+use app_config::{load_app_config, save_app_config, AppConfig};
 use collector::{
     clear_stats, new_collector_state, set_ignore_key_combos, set_paused, snapshot,
     start_collector, StatsSnapshot,
 };
-use storage::{load_app_config, save_app_config, AppConfig};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
@@ -18,11 +17,13 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 
+mod app_config;
 mod collector;
 mod storage;
 
 struct AppState {
     inner: Arc<Mutex<collector::CollectorState>>,
+    config: Arc<Mutex<AppConfig>>,
     config_path: PathBuf,
 }
 
@@ -77,12 +78,10 @@ fn update_ignore_key_combos(
 ) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
         set_ignore_key_combos(&mut locked, ignore_key_combos);
-        let _ = save_app_config(
-            &state.config_path,
-            &AppConfig {
-                ignore_key_combos,
-            },
-        );
+        if let Ok(mut config) = state.config.lock() {
+            config.ignore_key_combos = ignore_key_combos;
+            let _ = save_app_config(&state.config_path, &config);
+        }
         let _ = collector::append_app_log(
             &locked.app_log_path,
             if ignore_key_combos {
@@ -231,6 +230,7 @@ pub fn run() {
             let detail_path = data_dir.join("typingstats-details.json");
             let config_path = data_dir.join("typingstats-config.json");
             let config = load_app_config(&config_path).unwrap_or_default();
+            let tray_update_interval = config.tray_update_interval();
             let _ = collector::append_app_log(&app_log_path, "app started");
             let panic_log_path = app_log_path.clone();
             std::panic::set_hook(Box::new(move |info| {
@@ -240,15 +240,16 @@ pub fn run() {
                 log_path,
                 app_log_path,
                 detail_path,
-                config.ignore_key_combos,
+                &config,
             )));
             start_collector(state.clone());
             app.manage(AppState {
                 inner: state.clone(),
+                config: Arc::new(Mutex::new(config)),
                 config_path,
             });
             let tray_items = build_tray(app)?;
-            start_tray_updater(state, tray_items);
+            start_tray_updater(state, tray_items, tray_update_interval);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -360,10 +361,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
     })
 }
 
-fn start_tray_updater(state: Arc<Mutex<collector::CollectorState>>, items: TraySummaryItems) {
+fn start_tray_updater(
+    state: Arc<Mutex<collector::CollectorState>>,
+    items: TraySummaryItems,
+    tick_interval: std::time::Duration,
+) {
     let _ = update_tray_summary(&items, &get_snapshot_from_state(&state));
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(tick_interval);
         let snapshot = get_snapshot_from_state(&state);
         let _ = update_tray_summary(&items, &snapshot);
     });
