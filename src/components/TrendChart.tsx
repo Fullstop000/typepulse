@@ -31,16 +31,30 @@ function TrendChart({
     }
     const element = chartRef.current;
     const width = element.clientWidth || 640;
-    const axisFormat =
-      granularity === "1d"
-        ? "{MM}-{DD}"
-        : granularity === "1h"
-          ? "{MM}-{DD} {HH}:00"
-          : "{HH}:{mm}";
+    const axisFormat = granularity === "1d" ? "{MM}-{DD}" : "{HH}:{mm}";
     const tooltipFormat =
       granularity === "1d" ? "{YYYY}-{MM}-{DD}" : "{YYYY}-{MM}-{DD} {HH}:{mm}";
     const axisFormatter = uPlot.fmtDate(axisFormat);
     const tooltipFormatter = uPlot.fmtDate(tooltipFormat);
+    const hourFormatter = uPlot.fmtDate("{HH}:00");
+    const dayFormatter = uPlot.fmtDate("{MM}-{DD}");
+    const axisValues =
+      granularity === "1h"
+        ? (ticks: number[]) => {
+            let lastDay = "";
+            return ticks.map((tick) => {
+              const date = new Date(tick * 1000);
+              const day = dayFormatter(date);
+              const hour = hourFormatter(date);
+              if (day !== lastDay) {
+                lastDay = day;
+                return `${day}\n${hour}`;
+              }
+              return hour;
+            });
+          }
+        : (ticks: number[]) =>
+            ticks.map((tick) => axisFormatter(new Date(tick * 1000)));
     const spline = uPlot.paths?.spline ? uPlot.paths.spline() : undefined;
     const opts: uPlot.Options = {
       width,
@@ -53,8 +67,8 @@ function TrendChart({
       axes: [
         {
           scale: "x",
-          values: (_, ticks) =>
-            ticks.map((tick) => axisFormatter(new Date(tick * 1000))),
+          values: (_, ticks) => axisValues(ticks),
+          space: granularity === "1h" ? 70 : 40,
           grid: { show: false },
         },
         {
@@ -139,7 +153,7 @@ function TrendChart({
   return (
     <section className="card">
       <div className="chart-header">
-        <h2>输入活跃度趋势</h2>
+        <h2>键盘活跃度</h2>
         <div className="row">
           <button
             onClick={() => onGranularityChange("1m")}

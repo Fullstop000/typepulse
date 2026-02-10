@@ -11,6 +11,7 @@ export type Snapshot = {
   rows: StatsRow[];
   paused: boolean;
   keyboard_active: boolean;
+  ignore_key_combos: boolean;
   last_error: string | null;
   log_path: string;
 };

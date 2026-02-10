@@ -13,7 +13,7 @@ function MetricsGrid({ totals }: MetricsGridProps) {
           打字时长
           <span
             className="info-icon"
-            data-tooltip="相邻按键间隔≤5秒的时间差累加"
+            data-tooltip="按键间隔不超过5秒的时间，加起来就是打字时长"
             tabIndex={0}
           >
             ⓘ
@@ -26,7 +26,7 @@ function MetricsGrid({ totals }: MetricsGridProps) {
           按键次数
           <span
             className="info-icon"
-            data-tooltip="按键事件次数"
+            data-tooltip="你一共按了多少次键"
             tabIndex={0}
           >
             ⓘ
@@ -39,7 +39,7 @@ function MetricsGrid({ totals }: MetricsGridProps) {
           会话次数
           <span
             className="info-icon"
-            data-tooltip="按键间隔>5秒记为新会话"
+            data-tooltip="两次按键隔了超过5秒，就算开始了一次新会话"
             tabIndex={0}
           >
             ⓘ

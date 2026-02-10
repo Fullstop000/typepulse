@@ -5,15 +5,19 @@ import { invoke } from "@tauri-apps/api/core";
 type SettingsPageProps = {
   paused: boolean;
   keyboardActive: boolean;
+  ignoreKeyCombos: boolean;
   lastError: string | null;
   onTogglePause: () => void;
+  onToggleIgnoreKeyCombos: () => void;
 };
 
 function SettingsPage({
   paused,
   keyboardActive,
+  ignoreKeyCombos,
   lastError,
   onTogglePause,
+  onToggleIgnoreKeyCombos,
 }: SettingsPageProps) {
   const [dataSize, setDataSize] = useState<number | null>(null);
   const hasPermission = keyboardActive;
@@ -65,6 +69,15 @@ function SettingsPage({
         <div className="actions">
           <button onClick={onTogglePause}>
             {paused ? "继续采集" : "暂停采集"}
+          </button>
+        </div>
+        <div className="setting-row">
+          <div>
+            <span className="label">忽略组合键</span>
+            <p className="subtle">开启后不记录 Ctrl/Alt/Fn/Shift/Cmd + 任意键。</p>
+          </div>
+          <button className="secondary" onClick={onToggleIgnoreKeyCombos}>
+            {ignoreKeyCombos ? "已开启" : "已关闭"}
           </button>
         </div>
       </section>

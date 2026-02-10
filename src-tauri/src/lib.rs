@@ -6,8 +6,10 @@ use std::{
 };
 
 use collector::{
-    clear_stats, new_collector_state, set_paused, snapshot, start_collector, StatsSnapshot,
+    clear_stats, new_collector_state, set_ignore_key_combos, set_paused, snapshot,
+    start_collector, StatsSnapshot,
 };
+use storage::{load_app_config, save_app_config, AppConfig};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
@@ -21,6 +23,7 @@ mod storage;
 
 struct AppState {
     inner: Arc<Mutex<collector::CollectorState>>,
+    config_path: PathBuf,
 }
 
 type AppMenuItem = MenuItem<Wry>;
@@ -44,6 +47,7 @@ fn get_snapshot(state: tauri::State<AppState>) -> StatsSnapshot {
         rows: vec![],
         paused: false,
         keyboard_active: false,
+        ignore_key_combos: false,
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
     }
@@ -59,6 +63,32 @@ fn update_paused(state: tauri::State<AppState>, paused: bool) -> StatsSnapshot {
                 "paused via command"
             } else {
                 "resumed via command"
+            },
+        );
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+fn update_ignore_key_combos(
+    state: tauri::State<AppState>,
+    ignore_key_combos: bool,
+) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        set_ignore_key_combos(&mut locked, ignore_key_combos);
+        let _ = save_app_config(
+            &state.config_path,
+            &AppConfig {
+                ignore_key_combos,
+            },
+        );
+        let _ = collector::append_app_log(
+            &locked.app_log_path,
+            if ignore_key_combos {
+                "ignore key combos enabled"
+            } else {
+                "ignore key combos disabled"
             },
         );
         return snapshot(&locked);
@@ -199,6 +229,8 @@ pub fn run() {
             let log_path = data_dir.join("typingstats.csv");
             let app_log_path = data_dir.join("typingstats-app.log");
             let detail_path = data_dir.join("typingstats-details.json");
+            let config_path = data_dir.join("typingstats-config.json");
+            let config = load_app_config(&config_path).unwrap_or_default();
             let _ = collector::append_app_log(&app_log_path, "app started");
             let panic_log_path = app_log_path.clone();
             std::panic::set_hook(Box::new(move |info| {
@@ -208,10 +240,12 @@ pub fn run() {
                 log_path,
                 app_log_path,
                 detail_path,
+                config.ignore_key_combos,
             )));
             start_collector(state.clone());
             app.manage(AppState {
                 inner: state.clone(),
+                config_path,
             });
             let tray_items = build_tray(app)?;
             start_tray_updater(state, tray_items);
@@ -220,6 +254,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             update_paused,
+            update_ignore_key_combos,
             reset_stats,
             get_log_path,
             get_app_log_path,
@@ -342,6 +377,7 @@ fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> Sta
         rows: vec![],
         paused: false,
         keyboard_active: false,
+        ignore_key_combos: false,
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
     }
