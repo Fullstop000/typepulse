@@ -6,9 +6,9 @@ import PageHeader from "./components/PageHeader";
 import SettingsPage from "./components/SettingsPage";
 import Sidebar from "./components/Sidebar";
 import StatsPage from "./components/StatsPage";
+import { SettingSection } from "./components/settings/types";
 import {
   GroupedRow,
-  MenuBarDisplayMode,
   Snapshot,
   Totals,
   TrendGranularity,
@@ -20,6 +20,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">(
     "stats",
   );
+  const [activeSettingsSection, setActiveSettingsSection] =
+    useState<SettingSection>("capture");
   const [typingLogText, setTypingLogText] = useState("");
   const [appLogText, setAppLogText] = useState("");
   const [filterDays, setFilterDays] = useState<1 | 7>(1);
@@ -117,33 +119,14 @@ function App() {
     [snapshot, trendGranularity],
   );
 
-  const handleTogglePause = async () => {
-    const data = await invoke<Snapshot>("update_paused", {
-      paused: !snapshot?.paused,
-    });
-    setSnapshot(data);
-  };
-
-  const handleToggleIgnoreKeyCombos = async () => {
-    if (!snapshot) {
-      return;
-    }
-    const data = await invoke<Snapshot>("update_ignore_key_combos", {
-      ignoreKeyCombos: !snapshot.ignore_key_combos,
-    });
-    setSnapshot(data);
-  };
-
-  const handleTrayDisplayModeChange = async (mode: MenuBarDisplayMode) => {
-    const data = await invoke<Snapshot>("update_menu_bar_display_mode", {
-      mode,
-    });
-    setSnapshot(data);
-  };
-
   return (
     <div className="layout">
-      <Sidebar activeTab={activeTab} onChange={setActiveTab} />
+      <Sidebar
+        activeTab={activeTab}
+        activeSettingsSection={activeSettingsSection}
+        onChange={setActiveTab}
+        onSettingsSectionChange={setActiveSettingsSection}
+      />
       <main className="content">
         <div className="content-inner">
           {snapshot ? <PageHeader title={pageTitle} /> : null}
@@ -177,14 +160,9 @@ function App() {
             />
           ) : (
             <SettingsPage
-              paused={snapshot.paused}
-              keyboardActive={snapshot.keyboard_active}
-              ignoreKeyCombos={snapshot.ignore_key_combos}
-              trayDisplayMode={snapshot.tray_display_mode}
-              lastError={snapshot.last_error}
-              onTogglePause={handleTogglePause}
-              onToggleIgnoreKeyCombos={handleToggleIgnoreKeyCombos}
-              onTrayDisplayModeChange={handleTrayDisplayModeChange}
+              section={activeSettingsSection}
+              snapshot={snapshot}
+              onSnapshotChange={setSnapshot}
             />
           )}
         </div>

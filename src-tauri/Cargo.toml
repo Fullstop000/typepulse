@@ -27,4 +27,6 @@ tauri = {version = "2", features = ["tray-icon", "image-png"]}
 tauri-plugin-opener = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25"
+objc = "0.2"
 plist = "1"

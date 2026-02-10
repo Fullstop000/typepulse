@@ -7,8 +7,10 @@ use crate::{
     app_config::{save_app_config, MenuBarDisplayMode},
     apply_menu_bar_mode_immediately,
     collector::{
-        self, clear_stats, set_ignore_key_combos, set_menu_bar_display_mode, set_paused, snapshot,
-        StatsSnapshot,
+        self, add_excluded_bundle_id, bundle_id_from_app_path, clear_stats,
+        remove_excluded_bundle_id, running_apps, set_excluded_bundle_ids, set_ignore_key_combos,
+        set_menu_bar_display_mode, set_one_password_suggestion_pending, set_paused, snapshot,
+        RunningAppInfo, StatsSnapshot,
     },
     AppState,
 };
@@ -22,8 +24,12 @@ pub(crate) fn get_snapshot(state: State<AppState>) -> StatsSnapshot {
     StatsSnapshot {
         rows: vec![],
         paused: false,
+        auto_paused: false,
+        auto_pause_reason: None,
         keyboard_active: false,
         ignore_key_combos: false,
+        excluded_bundle_ids: vec![],
+        one_password_suggestion_pending: false,
         tray_display_mode: MenuBarDisplayMode::default().as_str().to_string(),
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
@@ -67,6 +73,128 @@ pub(crate) fn update_ignore_key_combos(
             } else {
                 "ignore key combos disabled"
             },
+        );
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+pub(crate) fn get_running_apps() -> Vec<RunningAppInfo> {
+    running_apps()
+}
+
+#[tauri::command]
+pub(crate) fn update_app_exclusion_list(
+    state: State<AppState>,
+    bundle_ids: Vec<String>,
+) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        set_excluded_bundle_ids(&mut locked, &bundle_ids);
+        if let Ok(mut config) = state.config.lock() {
+            config.excluded_bundle_ids = bundle_ids
+                .iter()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect();
+            let _ = save_app_config(&state.config_path, &config);
+        }
+        let _ = collector::append_app_log(&locked.app_log_path, "app exclusion list updated");
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+pub(crate) fn add_app_exclusion(state: State<AppState>, bundle_id: String) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        let added = add_excluded_bundle_id(&mut locked, &bundle_id);
+        if added {
+            if let Ok(mut config) = state.config.lock() {
+                let normalized = bundle_id.trim().to_ascii_lowercase();
+                if !config
+                    .excluded_bundle_ids
+                    .iter()
+                    .any(|v| v.eq_ignore_ascii_case(&normalized))
+                {
+                    config.excluded_bundle_ids.push(normalized.clone());
+                }
+                config.excluded_bundle_ids.sort();
+                config.excluded_bundle_ids.dedup();
+                let _ = save_app_config(&state.config_path, &config);
+            }
+            let _ = collector::append_app_log(
+                &locked.app_log_path,
+                &format!("bundle id added to exclusion list: {}", bundle_id),
+            );
+        }
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+pub(crate) fn remove_app_exclusion(state: State<AppState>, bundle_id: String) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        let removed = remove_excluded_bundle_id(&mut locked, &bundle_id);
+        if removed {
+            if let Ok(mut config) = state.config.lock() {
+                config
+                    .excluded_bundle_ids
+                    .retain(|v| !v.eq_ignore_ascii_case(bundle_id.as_str()));
+                let _ = save_app_config(&state.config_path, &config);
+            }
+            let _ = collector::append_app_log(
+                &locked.app_log_path,
+                &format!("bundle id removed from exclusion list: {}", bundle_id),
+            );
+        }
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+pub(crate) fn resolve_bundle_id_from_app_path(path: String) -> Option<String> {
+    bundle_id_from_app_path(&path)
+}
+
+#[tauri::command]
+pub(crate) fn dismiss_one_password_suggestion(state: State<AppState>) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        set_one_password_suggestion_pending(&mut locked, false);
+        if let Ok(mut config) = state.config.lock() {
+            config.one_password_suggestion_handled = true;
+            let _ = save_app_config(&state.config_path, &config);
+        }
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+pub(crate) fn accept_one_password_suggestion(state: State<AppState>) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        let _ = add_excluded_bundle_id(&mut locked, "com.1password.1password");
+        set_one_password_suggestion_pending(&mut locked, false);
+        if let Ok(mut config) = state.config.lock() {
+            if !config
+                .excluded_bundle_ids
+                .iter()
+                .any(|v| v.eq_ignore_ascii_case("com.1password.1password"))
+            {
+                config
+                    .excluded_bundle_ids
+                    .push("com.1password.1password".to_string());
+            }
+            config.excluded_bundle_ids.sort();
+            config.excluded_bundle_ids.dedup();
+            config.one_password_suggestion_handled = true;
+            let _ = save_app_config(&state.config_path, &config);
+        }
+        let _ = collector::append_app_log(
+            &locked.app_log_path,
+            "1Password added to exclusion list via suggestion",
         );
         return snapshot(&locked);
     }

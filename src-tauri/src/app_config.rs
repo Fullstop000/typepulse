@@ -2,6 +2,17 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) const DEFAULT_EXCLUDED_BUNDLE_IDS: [&str; 8] = [
+    "com.1password.1password",
+    "com.agilebits.onepassword7",
+    "com.apple.keychainaccess",
+    "com.bitwarden.desktop",
+    "com.dashlane.dashlanephonefinal",
+    "com.lastpass.lastpass",
+    "com.roboform.RoboForm",
+    "com.stickypassword.mac",
+];
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MenuBarDisplayMode {
@@ -50,6 +61,10 @@ pub(crate) struct AppConfig {
     pub(crate) tray_update_interval_secs: u64,
     /// 菜单栏小组件显示模式：仅图标 / 仅文本 / 图标+文本。
     pub(crate) menu_bar_display_mode: MenuBarDisplayMode,
+    /// 忽略采集的应用 Bundle ID 列表。
+    pub(crate) excluded_bundle_ids: Vec<String>,
+    /// 是否已经处理过首次 1Password 忽略建议。
+    pub(crate) one_password_suggestion_handled: bool,
 }
 
 impl Default for AppConfig {
@@ -61,6 +76,11 @@ impl Default for AppConfig {
             session_gap_secs: 5,
             tray_update_interval_secs: 1,
             menu_bar_display_mode: MenuBarDisplayMode::IconText,
+            excluded_bundle_ids: DEFAULT_EXCLUDED_BUNDLE_IDS
+                .iter()
+                .map(|v| v.to_ascii_lowercase())
+                .collect(),
+            one_password_suggestion_handled: false,
         }
     }
 }
@@ -85,7 +105,9 @@ impl AppConfig {
 
 pub(crate) fn load_app_config(path: &PathBuf) -> Result<AppConfig, String> {
     match std::fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).map_err(|e| e.to_string()),
+        Ok(content) => serde_json::from_str::<AppConfig>(&content)
+            .map(normalize_excluded_bundle_ids)
+            .map_err(|e| e.to_string()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AppConfig::default()),
         Err(err) => Err(err.to_string()),
     }
@@ -100,4 +122,16 @@ pub(crate) fn save_app_config(path: &PathBuf, config: &AppConfig) -> Result<(), 
     std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp_path, path).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn normalize_excluded_bundle_ids(mut config: AppConfig) -> AppConfig {
+    config.excluded_bundle_ids = config
+        .excluded_bundle_ids
+        .iter()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+    config.excluded_bundle_ids.sort();
+    config.excluded_bundle_ids.dedup();
+    config
 }

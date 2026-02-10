@@ -89,6 +89,13 @@ pub fn run() {
             command::get_snapshot,
             command::update_paused,
             command::update_ignore_key_combos,
+            command::get_running_apps,
+            command::update_app_exclusion_list,
+            command::add_app_exclusion,
+            command::remove_app_exclusion,
+            command::resolve_bundle_id_from_app_path,
+            command::dismiss_one_password_suggestion,
+            command::accept_one_password_suggestion,
             command::update_menu_bar_display_mode,
             command::reset_stats,
             command::get_log_path,
@@ -212,8 +219,12 @@ fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> Sta
     StatsSnapshot {
         rows: vec![],
         paused: false,
+        auto_paused: false,
+        auto_pause_reason: None,
         keyboard_active: false,
         ignore_key_combos: false,
+        excluded_bundle_ids: vec![],
+        one_password_suggestion_pending: false,
         tray_display_mode: MenuBarDisplayMode::default().as_str().to_string(),
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
@@ -239,15 +250,21 @@ fn update_tray_summary(
         });
 
     let mode = MenuBarDisplayMode::from_str(&snapshot.tray_display_mode).unwrap_or_default();
+    let paused = snapshot.paused || snapshot.auto_paused;
     let toggle_text = if snapshot.paused {
         "继续采集".to_string()
     } else {
         "暂停采集".to_string()
     };
     let compact_keys = format_compact_number(keys);
+    let title_text = if snapshot.auto_paused {
+        "暂停".to_string()
+    } else {
+        compact_keys.clone()
+    };
     let title = match mode {
         MenuBarDisplayMode::IconOnly => Some(String::new()),
-        MenuBarDisplayMode::TextOnly | MenuBarDisplayMode::IconText => Some(compact_keys.clone()),
+        MenuBarDisplayMode::TextOnly | MenuBarDisplayMode::IconText => Some(title_text),
     };
     let should_update_icon = mode != *last_mode;
     let should_update_title = mode != *last_mode || title != *last_title;
@@ -270,9 +287,14 @@ fn update_tray_summary(
     }
 
     items.overview_item.set_text(format!(
-        "今日时长: {} | 今日总键数: {}",
+        "今日时长: {} | 今日总键数: {}{}",
         format_hm(active),
-        compact_keys
+        compact_keys,
+        if paused {
+            " | 当前状态: 暂停"
+        } else {
+            ""
+        }
     ))?;
     items.toggle_item.set_text(toggle_text)?;
 
@@ -322,6 +344,11 @@ pub(crate) fn apply_menu_bar_mode_immediately(app: &tauri::AppHandle, snapshot: 
         .filter(|row| row.date.starts_with(&today_prefix))
         .fold(0u64, |acc, row| acc + row.key_count);
     let compact_keys = format_compact_number(keys);
+    let title_text = if snapshot.auto_paused {
+        "暂停".to_string()
+    } else {
+        compact_keys
+    };
     let mode = MenuBarDisplayMode::from_str(&snapshot.tray_display_mode).unwrap_or_default();
     match mode {
         MenuBarDisplayMode::IconOnly => {
@@ -337,7 +364,7 @@ pub(crate) fn apply_menu_bar_mode_immediately(app: &tauri::AppHandle, snapshot: 
         }
         MenuBarDisplayMode::TextOnly => {
             let _ = tray.set_icon(None);
-            let _ = tray.set_title(Some(compact_keys));
+            let _ = tray.set_title(Some(title_text));
         }
         MenuBarDisplayMode::IconText => {
             let icon = Image::from_bytes(include_bytes!("../icons/l_black.png"))
@@ -348,7 +375,7 @@ pub(crate) fn apply_menu_bar_mode_immediately(app: &tauri::AppHandle, snapshot: 
             {
                 let _ = tray.set_icon_as_template(true);
             }
-            let _ = tray.set_title(Some(compact_keys));
+            let _ = tray.set_title(Some(title_text));
         }
     }
 }
