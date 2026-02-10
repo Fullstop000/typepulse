@@ -24,6 +24,26 @@ pub(crate) struct JsonFileStorage {
 }
 
 impl JsonFileStorage {
+    fn base_name(&self) -> Option<String> {
+        self.path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+    }
+
+    fn date_prefix(date: &str) -> Option<String> {
+        if date.len() < 10 {
+            return None;
+        }
+        Some(date[..10].to_string())
+    }
+
+    fn dated_path(&self, date_prefix: &str) -> Option<PathBuf> {
+        let parent = self.path.parent()?;
+        let base = self.base_name()?;
+        Some(parent.join(format!("{date_prefix}-{base}")))
+    }
+
     fn stats_to_rows(stats: &HashMap<StatsKey, StatsValue>) -> Vec<StoredRow> {
         let mut rows: Vec<StoredRow> = stats
             .iter()
@@ -65,12 +85,54 @@ impl JsonFileStorage {
 
 impl DetailStorage for JsonFileStorage {
     fn load_stats(&self) -> Result<HashMap<StatsKey, StatsValue>, String> {
-        let content = match std::fs::read_to_string(&self.path) {
-            Ok(v) => v,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        let mut rows: Vec<StoredRow> = Vec::new();
+        // Read legacy monolithic storage file first, if it exists.
+        let legacy_content = std::fs::read_to_string(&self.path);
+        match legacy_content {
+            Ok(content) => {
+                let mut legacy_rows: Vec<StoredRow> =
+                    serde_json::from_str(&content).map_err(|e| e.to_string())?;
+                rows.append(&mut legacy_rows);
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.to_string()),
+        }
+        let parent = match self.path.parent() {
+            Some(parent) => parent,
+            None => return Ok(Self::rows_to_stats(rows)),
+        };
+        let base = match self.base_name() {
+            Some(base) => base,
+            None => return Ok(Self::rows_to_stats(rows)),
+        };
+        // Merge all daily rotated files that match the base filename.
+        let entries = match std::fs::read_dir(parent) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::rows_to_stats(rows))
+            }
             Err(err) => return Err(err.to_string()),
         };
-        let rows: Vec<StoredRow> = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        let suffix = format!("-{base}");
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let file_name = match path.file_name().and_then(|name| name.to_str()) {
+                Some(name) => name,
+                None => continue,
+            };
+            if !file_name.ends_with(&suffix) {
+                continue;
+            }
+            // Skip files that cannot be parsed; keep loading what we can.
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(mut day_rows) = serde_json::from_str::<Vec<StoredRow>>(&content) {
+                    rows.append(&mut day_rows);
+                }
+            }
+        }
         Ok(Self::rows_to_stats(rows))
     }
 
@@ -79,10 +141,25 @@ impl DetailStorage for JsonFileStorage {
             let _ = std::fs::create_dir_all(parent);
         }
         let rows = Self::stats_to_rows(stats);
-        let bytes = serde_json::to_vec(&rows).map_err(|e| e.to_string())?;
-        let tmp_path = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp_path, &self.path).map_err(|e| e.to_string())?;
+        let mut grouped: HashMap<String, Vec<StoredRow>> = HashMap::new();
+        for row in rows {
+            if let Some(date_prefix) = Self::date_prefix(&row.date) {
+                grouped.entry(date_prefix).or_default().push(row);
+            }
+        }
+        // Write each date bucket into its own file for easier rotation.
+        for (date_prefix, day_rows) in grouped {
+            let path = match self.dated_path(&date_prefix) {
+                Some(path) => path,
+                None => continue,
+            };
+            let bytes = serde_json::to_vec(&day_rows).map_err(|e| e.to_string())?;
+            let tmp_path = path.with_extension("json.tmp");
+            std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
+            std::fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
+        }
+        // Remove legacy monolithic file once daily files are written.
+        let _ = std::fs::remove_file(&self.path);
         Ok(())
     }
 }
@@ -101,6 +178,12 @@ mod tests {
             .as_nanos();
         path.push(format!("typepulse-{name}-{stamp}.json"));
         path
+    }
+
+    fn dated_path(base: &PathBuf, date: &str) -> Option<PathBuf> {
+        let parent = base.parent()?;
+        let name = base.file_name()?.to_str()?;
+        Some(parent.join(format!("{date}-{name}")))
     }
 
     #[test]
@@ -130,7 +213,7 @@ mod tests {
         );
         stats.insert(
             StatsKey {
-                date: "2026-02-09 10:01".to_string(),
+                date: "2026-02-10 10:01".to_string(),
                 app_name: "AppB".to_string(),
                 window_title: "WindowB".to_string(),
             },
@@ -153,6 +236,11 @@ mod tests {
         assert_eq!(value.active_typing_ms, 1200);
         assert_eq!(value.key_count, 12);
         assert_eq!(value.session_count, 2);
-        let _ = fs::remove_file(path);
+        if let Some(path) = dated_path(&path, "2026-02-09") {
+            let _ = fs::remove_file(path);
+        }
+        if let Some(path) = dated_path(&path, "2026-02-10") {
+            let _ = fs::remove_file(path);
+        }
     }
 }
