@@ -1,6 +1,6 @@
 import { Box, Grid, HStack, Text } from "@chakra-ui/react";
-import { Totals } from "../types";
-import { formatMs } from "../utils/stats";
+import { Totals } from "../../types";
+import { formatMs } from "../../utils/stats";
 
 type MetricsGridProps = {
   totals: Totals;

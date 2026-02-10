@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Box, Button, ButtonGroup, Flex, Text } from "@chakra-ui/react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { TrendGranularity, TrendSeries } from "../types";
+import { TrendGranularity, TrendSeries } from "../../types";
 
 type TrendChartProps = {
   series: TrendSeries;

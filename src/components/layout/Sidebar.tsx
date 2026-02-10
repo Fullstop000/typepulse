@@ -1,6 +1,6 @@
 import { Box, Button, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { SettingSection } from "./settings/types";
+import { SettingSection } from "../settings/types";
 
 type SidebarProps = {
   activeTab: "stats" | "logs" | "settings";

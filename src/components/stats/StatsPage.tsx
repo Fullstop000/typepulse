@@ -1,4 +1,4 @@
-import { GroupedRow, Snapshot, Totals, TrendGranularity, TrendSeries } from "../types";
+import { GroupedRow, Snapshot, Totals, TrendGranularity, TrendSeries } from "../../types";
 import AppTable from "./AppTable";
 import FilterBar from "./FilterBar";
 import MetricsGrid from "./MetricsGrid";

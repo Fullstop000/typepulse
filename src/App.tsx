@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Box, Container, Flex, Spinner, Text } from "@chakra-ui/react";
-import LogsPage from "./components/LogsPage";
-import PageHeader from "./components/PageHeader";
-import SettingsPage from "./components/SettingsPage";
-import Sidebar from "./components/Sidebar";
-import StatsPage from "./components/StatsPage";
+import LogsPage from "./components/logs/LogsPage";
+import PageHeader from "./components/layout/PageHeader";
+import SettingsPage from "./components/settings/page/SettingsPage";
+import Sidebar from "./components/layout/Sidebar";
+import StatsPage from "./components/stats/StatsPage";
 import { SettingSection } from "./components/settings/types";
 import { GroupedRow, Snapshot, Totals, TrendGranularity } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";

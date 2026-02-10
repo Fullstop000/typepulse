@@ -1,5 +1,5 @@
 import { Badge, Box, Flex, Stack, Text } from "@chakra-ui/react";
-import { Snapshot } from "../types";
+import { Snapshot } from "../../types";
 
 type StatusCardProps = {
   snapshot: Snapshot;

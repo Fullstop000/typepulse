@@ -1,6 +1,6 @@
 import { Box, HStack, Text } from "@chakra-ui/react";
-import { GroupedRow } from "../types";
-import { formatMs } from "../utils/stats";
+import { GroupedRow } from "../../types";
+import { formatMs } from "../../utils/stats";
 
 type AppTableProps = {
   rows: GroupedRow[];

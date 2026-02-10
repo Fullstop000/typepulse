@@ -713,6 +713,20 @@ mod tests {
             });
         }
 
+        // Push one tick event with a custom context, useful for auto-pause tests.
+        fn tick_with_context(
+            &mut self,
+            elapsed: Duration,
+            at: Instant,
+            capture_context: CaptureContext,
+        ) {
+            self.push(CollectorEvent::Tick {
+                elapsed,
+                capture_context,
+                at,
+            });
+        }
+
         fn rows(&self) -> Vec<super::StatsRow> {
             snapshot_rows(&self.state).unwrap()
         }
@@ -825,6 +839,56 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].active_typing_ms, 500);
         assert_eq!(rows[0].key_count, 1);
+    }
+
+    #[test]
+    fn auto_pause_tick_resets_pressed_state_until_new_key_down() {
+        let mut harness = CollectorEventHarness::new();
+        let now = Instant::now();
+
+        harness.key_down("k:a", false, now);
+        harness.tick(Duration::from_millis(500), now + Duration::from_millis(500));
+        harness.tick_with_context(
+            Duration::from_millis(300),
+            now + Duration::from_millis(800),
+            CaptureContext {
+                app_name: "Editor".to_string(),
+                window_title: "Doc".to_string(),
+                bundle_id: Some("com.test.editor".to_string()),
+                secure_input: true,
+            },
+        );
+        harness.tick(
+            Duration::from_millis(400),
+            now + Duration::from_millis(1200),
+        );
+        harness.key_down("k:a", false, now + Duration::from_millis(1300));
+        harness.tick(
+            Duration::from_millis(200),
+            now + Duration::from_millis(1500),
+        );
+
+        let rows = harness.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key_count, 2);
+        assert_eq!(rows[0].active_typing_ms, 700);
+    }
+
+    #[test]
+    fn ignore_key_combo_event_is_not_counted_in_event_stream() {
+        let mut harness = CollectorEventHarness::new();
+        let now = Instant::now();
+        set_ignore_key_combos(&mut harness.state, true);
+
+        harness.key_down("k:a", true, now);
+        harness.tick(Duration::from_millis(300), now + Duration::from_millis(300));
+        harness.key_down("k:a", false, now + Duration::from_millis(400));
+        harness.tick(Duration::from_millis(200), now + Duration::from_millis(600));
+
+        let rows = harness.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key_count, 1);
+        assert_eq!(rows[0].active_typing_ms, 200);
     }
 }
 

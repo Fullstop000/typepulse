@@ -1,10 +1,10 @@
 import { Stack } from "@chakra-ui/react";
-import { Snapshot } from "../types";
-import CaptureSettingsSection from "./settings/CaptureSettingsSection";
-import DisplaySettingsSection from "./settings/DisplaySettingsSection";
-import { SettingsProvider } from "./settings/SettingsContext";
-import StorageSettingsSection from "./settings/StorageSettingsSection";
-import { SettingSection } from "./settings/types";
+import { Snapshot } from "../../../types";
+import CaptureSettingsSection from "../CaptureSettingsSection";
+import DisplaySettingsSection from "../DisplaySettingsSection";
+import { SettingsProvider } from "../SettingsContext";
+import StorageSettingsSection from "../StorageSettingsSection";
+import { SettingSection } from "../types";
 
 type SettingsPageProps = {
   section: SettingSection;
