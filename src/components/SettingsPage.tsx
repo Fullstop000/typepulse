@@ -1,23 +1,28 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
+import { MenuBarDisplayMode } from "../types";
 
 type SettingsPageProps = {
   paused: boolean;
   keyboardActive: boolean;
   ignoreKeyCombos: boolean;
+  trayDisplayMode: MenuBarDisplayMode;
   lastError: string | null;
   onTogglePause: () => void;
   onToggleIgnoreKeyCombos: () => void;
+  onTrayDisplayModeChange: (mode: MenuBarDisplayMode) => void;
 };
 
 function SettingsPage({
   paused,
   keyboardActive,
   ignoreKeyCombos,
+  trayDisplayMode,
   lastError,
   onTogglePause,
   onToggleIgnoreKeyCombos,
+  onTrayDisplayModeChange,
 }: SettingsPageProps) {
   const [dataSize, setDataSize] = useState<number | null>(null);
   const hasPermission = keyboardActive;
@@ -79,6 +84,23 @@ function SettingsPage({
           <button className="secondary" onClick={onToggleIgnoreKeyCombos}>
             {ignoreKeyCombos ? "已开启" : "已关闭"}
           </button>
+        </div>
+        <div className="setting-row">
+          <div>
+            <span className="label">菜单栏显示模式</span>
+            <p className="subtle">控制菜单栏小组件展示为图标、数字或图标+数字。</p>
+          </div>
+          <select
+            className="secondary"
+            value={trayDisplayMode}
+            onChange={(event) =>
+              onTrayDisplayModeChange(event.target.value as MenuBarDisplayMode)
+            }
+          >
+            <option value="icon_only">仅图标</option>
+            <option value="text_only">仅数字</option>
+            <option value="icon_text">图标 + 数字</option>
+          </select>
         </div>
       </section>
       <section className="card">

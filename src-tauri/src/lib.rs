@@ -1,24 +1,22 @@
 use std::{
-    env, fs,
+    env,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
-use app_config::{load_app_config, save_app_config, AppConfig};
-use collector::{
-    clear_stats, new_collector_state, set_ignore_key_combos, set_paused, snapshot,
-    start_collector, StatsSnapshot,
-};
+use app_config::{load_app_config, AppConfig, MenuBarDisplayMode};
+use chrono::Local;
+use collector::{new_collector_state, set_paused, snapshot, start_collector, StatsSnapshot};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Manager, Wry,
 };
-use tauri_plugin_opener::OpenerExt;
 
 mod app_config;
 mod collector;
+mod command;
 mod storage;
 
 struct AppState {
@@ -30,175 +28,10 @@ struct AppState {
 type AppMenuItem = MenuItem<Wry>;
 
 struct TraySummaryItems {
-    _tray_icon: tauri::tray::TrayIcon<Wry>,
-    status_item: AppMenuItem,
-    keyboard_item: AppMenuItem,
+    tray_icon: tauri::tray::TrayIcon<Wry>,
+    black_icon: Option<Image<'static>>,
+    overview_item: AppMenuItem,
     toggle_item: AppMenuItem,
-    typing_item: AppMenuItem,
-    key_item: AppMenuItem,
-    session_item: AppMenuItem,
-}
-
-#[tauri::command]
-fn get_snapshot(state: tauri::State<AppState>) -> StatsSnapshot {
-    if let Ok(locked) = state.inner.lock() {
-        return snapshot(&locked);
-    }
-    StatsSnapshot {
-        rows: vec![],
-        paused: false,
-        keyboard_active: false,
-        ignore_key_combos: false,
-        last_error: Some("state lock failed".to_string()),
-        log_path: "".to_string(),
-    }
-}
-
-#[tauri::command]
-fn update_paused(state: tauri::State<AppState>, paused: bool) -> StatsSnapshot {
-    if let Ok(mut locked) = state.inner.lock() {
-        set_paused(&mut locked, paused);
-        let _ = collector::append_app_log(
-            &locked.app_log_path,
-            if paused {
-                "paused via command"
-            } else {
-                "resumed via command"
-            },
-        );
-        return snapshot(&locked);
-    }
-    get_snapshot(state)
-}
-
-#[tauri::command]
-fn update_ignore_key_combos(
-    state: tauri::State<AppState>,
-    ignore_key_combos: bool,
-) -> StatsSnapshot {
-    if let Ok(mut locked) = state.inner.lock() {
-        set_ignore_key_combos(&mut locked, ignore_key_combos);
-        if let Ok(mut config) = state.config.lock() {
-            config.ignore_key_combos = ignore_key_combos;
-            let _ = save_app_config(&state.config_path, &config);
-        }
-        let _ = collector::append_app_log(
-            &locked.app_log_path,
-            if ignore_key_combos {
-                "ignore key combos enabled"
-            } else {
-                "ignore key combos disabled"
-            },
-        );
-        return snapshot(&locked);
-    }
-    get_snapshot(state)
-}
-
-#[tauri::command]
-fn reset_stats(state: tauri::State<AppState>) -> StatsSnapshot {
-    if let Ok(mut locked) = state.inner.lock() {
-        clear_stats(&mut locked);
-        let _ = collector::append_app_log(&locked.app_log_path, "stats reset");
-        return snapshot(&locked);
-    }
-    get_snapshot(state)
-}
-
-#[tauri::command]
-fn get_log_path(state: tauri::State<AppState>) -> String {
-    if let Ok(locked) = state.inner.lock() {
-        return locked.log_path.to_string_lossy().to_string();
-    }
-    "".to_string()
-}
-
-#[tauri::command]
-fn get_app_log_path(state: tauri::State<AppState>) -> String {
-    if let Ok(locked) = state.inner.lock() {
-        return locked.app_log_path.to_string_lossy().to_string();
-    }
-    "".to_string()
-}
-
-#[tauri::command]
-fn get_log_tail(state: tauri::State<AppState>) -> String {
-    let path = if let Ok(locked) = state.inner.lock() {
-        locked.log_path.clone()
-    } else {
-        return "".to_string();
-    };
-    if let Ok(content) = std::fs::read_to_string(path) {
-        let lines: Vec<&str> = content.lines().collect();
-        let start = lines.len().saturating_sub(200);
-        return lines[start..].join("\n");
-    }
-    "".to_string()
-}
-
-#[tauri::command]
-fn get_app_log_tail(state: tauri::State<AppState>) -> String {
-    let path = if let Ok(locked) = state.inner.lock() {
-        locked.app_log_path.clone()
-    } else {
-        return "".to_string();
-    };
-    if let Ok(content) = std::fs::read_to_string(path) {
-        let lines: Vec<&str> = content.lines().collect();
-        let start = lines.len().saturating_sub(400);
-        return lines[start..].join("\n");
-    }
-    "".to_string()
-}
-
-#[tauri::command]
-fn open_data_dir(state: tauri::State<AppState>, app: tauri::AppHandle) -> Result<(), String> {
-    let path = if let Ok(locked) = state.inner.lock() {
-        locked.log_path.clone()
-    } else {
-        return Err("state lock failed".to_string());
-    };
-    let data_dir = path.parent().unwrap_or(path.as_path());
-    let _ = std::fs::create_dir_all(data_dir);
-    app.opener()
-        .open_path(data_dir.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|err| err.to_string())
-}
-
-#[tauri::command]
-fn get_data_dir_size(state: tauri::State<AppState>) -> u64 {
-    let path = if let Ok(locked) = state.inner.lock() {
-        locked.log_path.clone()
-    } else {
-        return 0;
-    };
-    let data_dir = path.parent().unwrap_or(path.as_path()).to_path_buf();
-    let _ = fs::create_dir_all(&data_dir);
-    folder_size(&data_dir)
-}
-
-fn folder_size(path: &PathBuf) -> u64 {
-    let mut total = 0u64;
-    let mut stack = vec![path.clone()];
-    while let Some(current) = stack.pop() {
-        let entries = match fs::read_dir(&current) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let metadata = match entry.metadata() {
-                Ok(metadata) => metadata,
-                Err(_) => continue,
-            };
-            if metadata.is_dir() {
-                stack.push(path);
-            } else {
-                total += metadata.len();
-            }
-        }
-    }
-    total
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -253,56 +86,41 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_snapshot,
-            update_paused,
-            update_ignore_key_combos,
-            reset_stats,
-            get_log_path,
-            get_app_log_path,
-            get_log_tail,
-            get_app_log_tail,
-            open_data_dir,
-            get_data_dir_size
+            command::get_snapshot,
+            command::update_paused,
+            command::update_ignore_key_combos,
+            command::update_menu_bar_display_mode,
+            command::reset_stats,
+            command::get_log_path,
+            command::get_app_log_path,
+            command::get_log_tail,
+            command::get_app_log_tail,
+            command::open_data_dir,
+            command::get_data_dir_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
-    let status_item = MenuItemBuilder::with_id("status", "采集状态: 运行中")
-        .enabled(false)
-        .build(app)?;
-    let keyboard_item = MenuItemBuilder::with_id("keyboard", "键盘监听: 已启用")
+    let overview_item = MenuItemBuilder::with_id("overview", "今日时长: 0h 0m | 今日总键数: 0")
         .enabled(false)
         .build(app)?;
     let toggle_item = MenuItemBuilder::with_id("toggle", "暂停采集")
         .enabled(true)
         .build(app)?;
-    let typing_item = MenuItemBuilder::with_id("typing", "打字时长: 0m 0s")
-        .enabled(false)
-        .build(app)?;
-    let key_item = MenuItemBuilder::with_id("keys", "按键次数: 0")
-        .enabled(false)
-        .build(app)?;
-    let session_item = MenuItemBuilder::with_id("sessions", "会话次数: 0")
-        .enabled(false)
-        .build(app)?;
-    let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, "show", "打开主面板", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let separator_top = PredefinedMenuItem::separator(app)?;
+    let separator_middle = PredefinedMenuItem::separator(app)?;
     let separator_bottom = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
         &[
-            &status_item,
-            &keyboard_item,
+            &overview_item,
             &toggle_item,
-            &separator_top,
-            &typing_item,
-            &key_item,
-            &session_item,
-            &separator_bottom,
+            &separator_middle,
             &show_item,
+            &separator_bottom,
             &quit_item,
         ],
     )?;
@@ -337,10 +155,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
             }
         });
 
-    let tray_icon = Image::from_bytes(include_bytes!("../icons/l_white.png"))
+    let black_icon = Image::from_bytes(include_bytes!("../icons/l_black.png"))
         .ok()
-        .or_else(|| app.default_window_icon().cloned());
-    if let Some(icon) = tray_icon {
+        .or_else(|| app.default_window_icon().cloned())
+        .map(Image::to_owned);
+    if let Some(icon) = black_icon.clone() {
         builder = builder.icon(icon);
     }
     #[cfg(target_os = "macos")]
@@ -351,13 +170,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
     let tray_icon = builder.build(app)?;
 
     Ok(TraySummaryItems {
-        _tray_icon: tray_icon,
-        status_item,
-        keyboard_item,
+        tray_icon,
+        black_icon,
+        overview_item,
         toggle_item,
-        typing_item,
-        key_item,
-        session_item,
     })
 }
 
@@ -366,11 +182,26 @@ fn start_tray_updater(
     items: TraySummaryItems,
     tick_interval: std::time::Duration,
 ) {
-    let _ = update_tray_summary(&items, &get_snapshot_from_state(&state));
+    let mut last_total_keys = 0u64;
+    let mut last_title: Option<String> = None;
+    let mut last_mode = MenuBarDisplayMode::default();
+    let _ = update_tray_summary(
+        &items,
+        &get_snapshot_from_state(&state),
+        &mut last_total_keys,
+        &mut last_title,
+        &mut last_mode,
+    );
     std::thread::spawn(move || loop {
         std::thread::sleep(tick_interval);
         let snapshot = get_snapshot_from_state(&state);
-        let _ = update_tray_summary(&items, &snapshot);
+        let _ = update_tray_summary(
+            &items,
+            &snapshot,
+            &mut last_total_keys,
+            &mut last_title,
+            &mut last_mode,
+        );
     });
 }
 
@@ -383,54 +214,141 @@ fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> Sta
         paused: false,
         keyboard_active: false,
         ignore_key_combos: false,
+        tray_display_mode: MenuBarDisplayMode::default().as_str().to_string(),
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
     }
 }
 
-fn update_tray_summary(items: &TraySummaryItems, snapshot: &StatsSnapshot) -> tauri::Result<()> {
-    let (active, keys, sessions) = snapshot
+fn update_tray_summary(
+    items: &TraySummaryItems,
+    snapshot: &StatsSnapshot,
+    last_total_keys: &mut u64,
+    last_title: &mut Option<String>,
+    last_mode: &mut MenuBarDisplayMode,
+) -> tauri::Result<()> {
+    let today_prefix = Local::now().format("%Y-%m-%d").to_string();
+    let (active, keys) = snapshot
         .rows
         .iter()
-        .fold((0u64, 0u64, 0u64), |mut acc, row| {
+        .filter(|row| row.date.starts_with(&today_prefix))
+        .fold((0u64, 0u64), |mut acc, row| {
             acc.0 += row.active_typing_ms;
             acc.1 += row.key_count;
-            acc.2 += row.session_count;
             acc
         });
 
-    let status_text = if snapshot.paused {
-        "采集状态: 已暂停".to_string()
-    } else {
-        "采集状态: 运行中".to_string()
-    };
-    let keyboard_text = if snapshot.keyboard_active {
-        "键盘监听: 已启用".to_string()
-    } else {
-        "键盘监听: 未启用".to_string()
-    };
+    let mode = MenuBarDisplayMode::from_str(&snapshot.tray_display_mode).unwrap_or_default();
     let toggle_text = if snapshot.paused {
         "继续采集".to_string()
     } else {
         "暂停采集".to_string()
     };
+    let compact_keys = format_compact_number(keys);
+    let title = match mode {
+        MenuBarDisplayMode::IconOnly => Some(String::new()),
+        MenuBarDisplayMode::TextOnly | MenuBarDisplayMode::IconText => Some(compact_keys.clone()),
+    };
+    let should_update_icon = mode != *last_mode;
+    let should_update_title = mode != *last_mode || title != *last_title;
+    if should_update_icon {
+        match mode {
+            MenuBarDisplayMode::TextOnly => {
+                let _ = items.tray_icon.set_icon(None);
+            }
+            MenuBarDisplayMode::IconOnly | MenuBarDisplayMode::IconText => {
+                let _ = items.tray_icon.set_icon(items.black_icon.clone());
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = items.tray_icon.set_icon_as_template(true);
+                }
+            }
+        }
+    }
+    if should_update_title {
+        let _ = items.tray_icon.set_title(title.clone());
+    }
 
-    items.status_item.set_text(status_text)?;
-    items.keyboard_item.set_text(keyboard_text)?;
+    items.overview_item.set_text(format!(
+        "今日时长: {} | 今日总键数: {}",
+        format_hm(active),
+        compact_keys
+    ))?;
     items.toggle_item.set_text(toggle_text)?;
-    items
-        .typing_item
-        .set_text(format!("打字时长: {}", format_ms(active)))?;
-    items.key_item.set_text(format!("按键次数: {}", keys))?;
-    items
-        .session_item
-        .set_text(format!("会话次数: {}", sessions))?;
+
+    *last_total_keys = keys;
+    *last_title = title;
+    *last_mode = mode;
     Ok(())
 }
 
-fn format_ms(ms: u64) -> String {
-    let total_seconds = ms / 1000;
-    let minutes = total_seconds / 60;
-    let seconds = total_seconds % 60;
-    format!("{}m {}s", minutes, seconds)
+fn format_hm(ms: u64) -> String {
+    let total_minutes = ms / 1000 / 60;
+    let hours = total_minutes / 60;
+    let minutes = total_minutes % 60;
+    format!("{}h {}m", hours, minutes)
+}
+
+fn format_compact_number(value: u64) -> String {
+    if value < 1_000 {
+        return value.to_string();
+    }
+    if value < 1_000_000 {
+        return format_one_decimal(value as f64 / 1_000f64, "k");
+    }
+    if value < 1_000_000_000 {
+        return format_one_decimal(value as f64 / 1_000_000f64, "m");
+    }
+    format_one_decimal(value as f64 / 1_000_000_000f64, "b")
+}
+
+fn format_one_decimal(base: f64, suffix: &str) -> String {
+    let rounded = (base * 10.0).round() / 10.0;
+    if (rounded - rounded.trunc()).abs() < f64::EPSILON {
+        format!("{}{}", rounded as u64, suffix)
+    } else {
+        format!("{:.1}{}", rounded, suffix)
+    }
+}
+
+pub(crate) fn apply_menu_bar_mode_immediately(app: &tauri::AppHandle, snapshot: &StatsSnapshot) {
+    let Some(tray) = app.tray_by_id("main-tray") else {
+        return;
+    };
+    let today_prefix = Local::now().format("%Y-%m-%d").to_string();
+    let keys = snapshot
+        .rows
+        .iter()
+        .filter(|row| row.date.starts_with(&today_prefix))
+        .fold(0u64, |acc, row| acc + row.key_count);
+    let compact_keys = format_compact_number(keys);
+    let mode = MenuBarDisplayMode::from_str(&snapshot.tray_display_mode).unwrap_or_default();
+    match mode {
+        MenuBarDisplayMode::IconOnly => {
+            let _ = tray.set_title(Some(String::new()));
+            let icon = Image::from_bytes(include_bytes!("../icons/l_black.png"))
+                .ok()
+                .or_else(|| app.default_window_icon().cloned());
+            let _ = tray.set_icon(icon);
+            #[cfg(target_os = "macos")]
+            {
+                let _ = tray.set_icon_as_template(true);
+            }
+        }
+        MenuBarDisplayMode::TextOnly => {
+            let _ = tray.set_icon(None);
+            let _ = tray.set_title(Some(compact_keys));
+        }
+        MenuBarDisplayMode::IconText => {
+            let icon = Image::from_bytes(include_bytes!("../icons/l_black.png"))
+                .ok()
+                .or_else(|| app.default_window_icon().cloned());
+            let _ = tray.set_icon(icon);
+            #[cfg(target_os = "macos")]
+            {
+                let _ = tray.set_icon_as_template(true);
+            }
+            let _ = tray.set_title(Some(compact_keys));
+        }
+    }
 }

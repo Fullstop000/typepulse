@@ -2,6 +2,39 @@ use std::{path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum MenuBarDisplayMode {
+    IconOnly,
+    TextOnly,
+    IconText,
+}
+
+impl Default for MenuBarDisplayMode {
+    fn default() -> Self {
+        Self::IconText
+    }
+}
+
+impl MenuBarDisplayMode {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::IconOnly => "icon_only",
+            Self::TextOnly => "text_only",
+            Self::IconText => "icon_text",
+        }
+    }
+
+    pub(crate) fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "icon_only" => Some(Self::IconOnly),
+            "text_only" => Some(Self::TextOnly),
+            "icon_text" => Some(Self::IconText),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub(crate) struct AppConfig {
@@ -15,6 +48,8 @@ pub(crate) struct AppConfig {
     pub(crate) session_gap_secs: u64,
     /// 托盘摘要信息刷新周期（秒），越小显示越及时。
     pub(crate) tray_update_interval_secs: u64,
+    /// 菜单栏小组件显示模式：仅图标 / 仅文本 / 图标+文本。
+    pub(crate) menu_bar_display_mode: MenuBarDisplayMode,
 }
 
 impl Default for AppConfig {
@@ -25,6 +60,7 @@ impl Default for AppConfig {
             flush_interval_secs: 60,
             session_gap_secs: 5,
             tray_update_interval_secs: 1,
+            menu_bar_display_mode: MenuBarDisplayMode::IconText,
         }
     }
 }

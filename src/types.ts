@@ -12,9 +12,12 @@ export type Snapshot = {
   paused: boolean;
   keyboard_active: boolean;
   ignore_key_combos: boolean;
+  tray_display_mode: MenuBarDisplayMode;
   last_error: string | null;
   log_path: string;
 };
+
+export type MenuBarDisplayMode = "icon_only" | "text_only" | "icon_text";
 
 export type GroupedRow = {
   app_name: string;
