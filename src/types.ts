@@ -10,8 +10,12 @@ export type StatsRow = {
 export type Snapshot = {
   rows: StatsRow[];
   paused: boolean;
+  auto_paused: boolean;
+  auto_pause_reason: "blacklist" | "secure_input" | null;
   keyboard_active: boolean;
   ignore_key_combos: boolean;
+  excluded_bundle_ids: string[];
+  one_password_suggestion_pending: boolean;
   tray_display_mode: MenuBarDisplayMode;
   last_error: string | null;
   log_path: string;
@@ -38,4 +42,9 @@ export type TrendSeries = {
   timestamps: number[];
   activeSeconds: number[];
   keyCounts: number[];
+};
+
+export type RunningAppInfo = {
+  bundle_id: string;
+  name: string;
 };

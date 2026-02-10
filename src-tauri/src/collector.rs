@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     io::Write,
     path::PathBuf,
@@ -41,8 +41,12 @@ pub struct StatsRow {
 pub struct StatsSnapshot {
     pub rows: Vec<StatsRow>,
     pub paused: bool,
+    pub auto_paused: bool,
+    pub auto_pause_reason: Option<String>,
     pub keyboard_active: bool,
     pub ignore_key_combos: bool,
+    pub excluded_bundle_ids: Vec<String>,
+    pub one_password_suggestion_pending: bool,
     pub tray_display_mode: String,
     pub last_error: Option<String>,
     pub log_path: String,
@@ -63,12 +67,20 @@ pub struct CollectorState {
     session_gap: Duration,
     // 是否暂停采集
     paused: bool,
+    // 当前是否因黑名单/安全输入而自动暂停记录
+    auto_paused: bool,
+    // 自动暂停原因（blacklist/secure_input）
+    auto_pause_reason: Option<String>,
     // 键盘监听是否正常工作
     keyboard_active: bool,
     // 是否忽略组合键（ctrl/alt/shift/cmd/fn + 其他键）
     ignore_key_combos: bool,
     // 菜单栏显示模式
     menu_bar_display_mode: MenuBarDisplayMode,
+    // 忽略采集应用的 Bundle ID 列表
+    excluded_bundle_ids: HashSet<String>,
+    // 首次 1Password 建议是否待处理
+    one_password_suggestion_pending: bool,
     // 最近一次错误信息（用于前端提示）
     last_error: Option<String>,
     // CSV 汇总文件路径
@@ -147,9 +159,17 @@ pub fn new_collector_state(
         flush_interval: config.flush_interval(),
         session_gap: config.session_gap(),
         paused: false,
+        auto_paused: false,
+        auto_pause_reason: None,
         keyboard_active: true,
         ignore_key_combos: config.ignore_key_combos,
         menu_bar_display_mode: config.menu_bar_display_mode,
+        excluded_bundle_ids: config
+            .excluded_bundle_ids
+            .iter()
+            .map(|v| v.to_ascii_lowercase())
+            .collect(),
+        one_password_suggestion_pending: false,
         last_error: None,
         log_path,
         app_log_path,
@@ -196,6 +216,7 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
         std::thread::sleep(tick_interval);
         if let Ok(mut locked) = tick_state.lock() {
             let now = Instant::now();
+            refresh_auto_pause_state(&mut locked);
             if locked.paused {
                 continue;
             }
@@ -213,20 +234,26 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
 fn on_key_press(state: &Arc<Mutex<CollectorState>>, is_key_combo: bool) {
     if let Ok(mut locked) = state.lock() {
         let now = Instant::now();
-        if locked.paused {
-            locked.last_key_instant = now;
-            return;
-        }
-        if should_ignore_keypress(locked.ignore_key_combos, is_key_combo) {
+        let capture_context = capture_context();
+        locked.auto_paused = is_auto_paused(&locked, &capture_context);
+        locked.auto_pause_reason = auto_pause_reason(&locked, &capture_context);
+
+        if locked.paused
+            || locked.auto_paused
+            || should_ignore_keypress(locked.ignore_key_combos, is_key_combo)
+        {
             return;
         }
         let delta = now.duration_since(locked.last_key_instant);
         locked.last_key_instant = now;
-        let (app_name, window_title) = active_window_info();
+        let app_name = capture_context
+            .bundle_id
+            .clone()
+            .unwrap_or(capture_context.app_name);
         let key = StatsKey {
             date: current_minute(),
             app_name,
-            window_title,
+            window_title: capture_context.window_title,
         };
         let session_gap = locked.session_gap;
         let entry = locked.stats.entry(key).or_insert(StatsValue {
@@ -392,11 +419,17 @@ pub fn snapshot_rows(state: &CollectorState) -> Result<Vec<StatsRow>, String> {
 
 pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
     let rows = snapshot_rows(state).unwrap_or_default();
+    let mut excluded_bundle_ids: Vec<String> = state.excluded_bundle_ids.iter().cloned().collect();
+    excluded_bundle_ids.sort();
     StatsSnapshot {
         rows,
         paused: state.paused,
+        auto_paused: state.auto_paused,
+        auto_pause_reason: state.auto_pause_reason.clone(),
         keyboard_active: state.keyboard_active,
         ignore_key_combos: state.ignore_key_combos,
+        excluded_bundle_ids,
+        one_password_suggestion_pending: state.one_password_suggestion_pending,
         tray_display_mode: state.menu_bar_display_mode.as_str().to_string(),
         last_error: state.last_error.clone(),
         log_path: state.log_path.to_string_lossy().to_string(),
@@ -413,6 +446,32 @@ pub fn set_ignore_key_combos(state: &mut CollectorState, ignore_key_combos: bool
 
 pub fn set_menu_bar_display_mode(state: &mut CollectorState, mode: MenuBarDisplayMode) {
     state.menu_bar_display_mode = mode;
+}
+
+pub fn set_excluded_bundle_ids(state: &mut CollectorState, bundle_ids: &[String]) {
+    state.excluded_bundle_ids = bundle_ids
+        .iter()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+}
+
+pub fn add_excluded_bundle_id(state: &mut CollectorState, bundle_id: &str) -> bool {
+    let normalized = bundle_id.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+    state.excluded_bundle_ids.insert(normalized)
+}
+
+pub fn remove_excluded_bundle_id(state: &mut CollectorState, bundle_id: &str) -> bool {
+    state
+        .excluded_bundle_ids
+        .remove(&bundle_id.trim().to_ascii_lowercase())
+}
+
+pub fn set_one_password_suggestion_pending(state: &mut CollectorState, pending: bool) {
+    state.one_password_suggestion_pending = pending;
 }
 
 pub fn clear_stats(state: &mut CollectorState) {
@@ -433,7 +492,7 @@ mod tests {
     use crate::app_config::MenuBarDisplayMode;
     use crate::storage::JsonFileStorage;
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         path::PathBuf,
         time::{Duration, Instant},
     };
@@ -448,9 +507,13 @@ mod tests {
             flush_interval: Duration::from_secs(60),
             session_gap: Duration::from_secs(5),
             paused: false,
+            auto_paused: false,
+            auto_pause_reason: None,
             keyboard_active: true,
             ignore_key_combos: false,
             menu_bar_display_mode: MenuBarDisplayMode::IconText,
+            excluded_bundle_ids: HashSet::new(),
+            one_password_suggestion_pending: false,
             last_error: None,
             log_path: PathBuf::from("log.csv"),
             app_log_path: PathBuf::from("app.log"),
@@ -518,19 +581,104 @@ mod tests {
     }
 }
 
-fn active_window_info() -> (String, String) {
+#[derive(Serialize, Clone)]
+pub struct RunningAppInfo {
+    pub bundle_id: String,
+    pub name: String,
+}
+
+struct CaptureContext {
+    app_name: String,
+    window_title: String,
+    bundle_id: Option<String>,
+    secure_input: bool,
+}
+
+fn capture_context() -> CaptureContext {
+    let secure_input = is_secure_event_input_enabled();
     if let Ok(window) = active_win_pos_rs::get_active_window() {
-        let app = window.app_name;
-        let title = window.title;
+        let app_name = window.app_name;
+        let window_title = window.title;
         #[cfg(target_os = "macos")]
         {
-            if let Some(bundle_id) = bundle_id_from_path(&window.process_path) {
-                return (bundle_id, title);
-            }
+            let bundle_id = frontmost_bundle_id_macos()
+                .or_else(|| bundle_id_from_path(&window.process_path))
+                .map(|v| v.to_ascii_lowercase());
+            return CaptureContext {
+                app_name,
+                window_title,
+                bundle_id,
+                secure_input,
+            };
         }
-        return (app, title);
+        #[cfg(not(target_os = "macos"))]
+        {
+            return CaptureContext {
+                app_name,
+                window_title,
+                bundle_id: None,
+                secure_input,
+            };
+        }
     }
-    ("Unknown".to_string(), "".to_string())
+    CaptureContext {
+        app_name: "Unknown".to_string(),
+        window_title: String::new(),
+        bundle_id: None,
+        secure_input,
+    }
+}
+
+fn refresh_auto_pause_state(state: &mut CollectorState) {
+    let context = capture_context();
+    state.auto_paused = is_auto_paused(state, &context);
+    state.auto_pause_reason = auto_pause_reason(state, &context);
+}
+
+fn is_auto_paused(state: &CollectorState, context: &CaptureContext) -> bool {
+    is_excluded_app(state, context) || context.secure_input
+}
+
+fn auto_pause_reason(state: &CollectorState, context: &CaptureContext) -> Option<String> {
+    if context.secure_input {
+        return Some("secure_input".to_string());
+    }
+    if is_excluded_app(state, context) {
+        return Some("blacklist".to_string());
+    }
+    None
+}
+
+fn is_excluded_app(state: &CollectorState, context: &CaptureContext) -> bool {
+    match &context.bundle_id {
+        Some(bundle_id) => state
+            .excluded_bundle_ids
+            .contains(&bundle_id.to_ascii_lowercase()),
+        None => false,
+    }
+}
+
+pub fn running_apps() -> Vec<RunningAppInfo> {
+    #[cfg(target_os = "macos")]
+    {
+        return workspace_running_apps();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        vec![]
+    }
+}
+
+pub fn bundle_id_from_app_path(path: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        bundle_id_from_path(std::path::Path::new(path)).map(|v| v.to_ascii_lowercase())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        None
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -554,6 +702,100 @@ fn bundle_id_from_path(path: &std::path::Path) -> Option<String> {
             .and_then(|v| v.as_string())
             .map(|v| v.to_string()),
         None => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn is_secure_event_input_enabled() -> bool {
+    #[link(name = "Carbon", kind = "framework")]
+    extern "C" {
+        fn IsSecureEventInputEnabled() -> bool;
+    }
+    unsafe { IsSecureEventInputEnabled() }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_secure_event_input_enabled() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn frontmost_bundle_id_macos() -> Option<String> {
+    use cocoa::base::{id, nil};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    unsafe {
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace == nil {
+            return None;
+        }
+        let app: id = msg_send![workspace, frontmostApplication];
+        if app == nil {
+            return None;
+        }
+        let bundle_id: id = msg_send![app, bundleIdentifier];
+        if bundle_id == nil {
+            return None;
+        }
+        Some(nsstring_to_string(bundle_id))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn workspace_running_apps() -> Vec<RunningAppInfo> {
+    use cocoa::base::{id, nil};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::collections::BTreeMap;
+
+    unsafe {
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace == nil {
+            return vec![];
+        }
+        let apps: id = msg_send![workspace, runningApplications];
+        if apps == nil {
+            return vec![];
+        }
+        let count: usize = msg_send![apps, count];
+        let mut map: BTreeMap<String, String> = BTreeMap::new();
+        for idx in 0..count {
+            let app: id = msg_send![apps, objectAtIndex: idx];
+            if app == nil {
+                continue;
+            }
+            let bundle_id_obj: id = msg_send![app, bundleIdentifier];
+            if bundle_id_obj == nil {
+                continue;
+            }
+            let name_obj: id = msg_send![app, localizedName];
+            let bundle_id = nsstring_to_string(bundle_id_obj);
+            let name = if name_obj == nil {
+                bundle_id.clone()
+            } else {
+                nsstring_to_string(name_obj)
+            };
+            if !bundle_id.trim().is_empty() {
+                map.insert(bundle_id.to_ascii_lowercase(), name);
+            }
+        }
+        map.into_iter()
+            .map(|(bundle_id, name)| RunningAppInfo { bundle_id, name })
+            .collect()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn nsstring_to_string(value: cocoa::base::id) -> String {
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let bytes: *const std::os::raw::c_char = msg_send![value, UTF8String];
+        if bytes.is_null() {
+            return String::new();
+        }
+        std::ffi::CStr::from_ptr(bytes)
+            .to_string_lossy()
+            .to_string()
     }
 }
 
