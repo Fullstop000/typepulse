@@ -10,6 +10,7 @@ use std::{
 use chrono::Local;
 use serde::Serialize;
 
+use crate::app_config::AppConfig;
 use crate::storage::{DetailStorage, JsonFileStorage};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -41,6 +42,7 @@ pub struct StatsSnapshot {
     pub rows: Vec<StatsRow>,
     pub paused: bool,
     pub keyboard_active: bool,
+    pub ignore_key_combos: bool,
     pub last_error: Option<String>,
     pub log_path: String,
 }
@@ -52,10 +54,18 @@ pub struct CollectorState {
     last_key_instant: Instant,
     // 最近一次刷盘时间点，用于控制落盘频率
     last_flush_instant: Instant,
+    // 采集线程轮询周期
+    collector_tick_interval: Duration,
+    // 统计刷盘周期
+    flush_interval: Duration,
+    // 会话判定阈值
+    session_gap: Duration,
     // 是否暂停采集
     paused: bool,
     // 键盘监听是否正常工作
     keyboard_active: bool,
+    // 是否忽略组合键（ctrl/alt/shift/cmd/fn + 其他键）
+    ignore_key_combos: bool,
     // 最近一次错误信息（用于前端提示）
     last_error: Option<String>,
     // CSV 汇总文件路径
@@ -64,12 +74,58 @@ pub struct CollectorState {
     pub app_log_path: PathBuf,
     // 明细数据的存储实现
     storage: Box<dyn DetailStorage>,
+    #[cfg(not(target_os = "macos"))]
+    modifier_state: ModifierState,
+}
+
+#[cfg(not(target_os = "macos"))]
+#[derive(Default)]
+struct ModifierState {
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    meta: bool,
+    function: bool,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl ModifierState {
+    fn has_any_modifier(&self) -> bool {
+        self.ctrl || self.alt || self.shift || self.meta || self.function
+    }
+
+    fn is_modifier_key(key: rdev::Key) -> bool {
+        matches!(
+            key,
+            rdev::Key::ControlLeft
+                | rdev::Key::ControlRight
+                | rdev::Key::Alt
+                | rdev::Key::AltGr
+                | rdev::Key::ShiftLeft
+                | rdev::Key::ShiftRight
+                | rdev::Key::MetaLeft
+                | rdev::Key::MetaRight
+                | rdev::Key::Function
+        )
+    }
+
+    fn update(&mut self, key: rdev::Key, pressed: bool) {
+        match key {
+            rdev::Key::ControlLeft | rdev::Key::ControlRight => self.ctrl = pressed,
+            rdev::Key::Alt | rdev::Key::AltGr => self.alt = pressed,
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => self.shift = pressed,
+            rdev::Key::MetaLeft | rdev::Key::MetaRight => self.meta = pressed,
+            rdev::Key::Function => self.function = pressed,
+            _ => {}
+        }
+    }
 }
 
 pub fn new_collector_state(
     log_path: PathBuf,
     app_log_path: PathBuf,
     detail_path: PathBuf,
+    config: &AppConfig,
 ) -> CollectorState {
     let now = Instant::now();
     let storage: Box<dyn DetailStorage> = Box::new(JsonFileStorage { path: detail_path });
@@ -84,12 +140,18 @@ pub fn new_collector_state(
         stats,
         last_key_instant: now,
         last_flush_instant: now,
+        collector_tick_interval: config.collector_tick_interval(),
+        flush_interval: config.flush_interval(),
+        session_gap: config.session_gap(),
         paused: false,
         keyboard_active: true,
+        ignore_key_combos: config.ignore_key_combos,
         last_error: None,
         log_path,
         app_log_path,
         storage,
+        #[cfg(not(target_os = "macos"))]
+        modifier_state: ModifierState::default(),
     }
 }
 
@@ -102,8 +164,10 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
 
         #[cfg(not(target_os = "macos"))]
         let result = rdev::listen(move |event| {
-            if let rdev::EventType::KeyPress(_) = event.event_type {
-                on_key_press(&key_state);
+            match event.event_type {
+                rdev::EventType::KeyPress(key) => on_key_event_non_macos(&key_state, key, true),
+                rdev::EventType::KeyRelease(key) => on_key_event_non_macos(&key_state, key, false),
+                _ => {}
             }
         })
         .map_err(|e| format!("{:?}", e));
@@ -122,13 +186,18 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
 
     let tick_state = state;
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
+        let tick_interval = if let Ok(locked) = tick_state.lock() {
+            locked.collector_tick_interval
+        } else {
+            Duration::from_secs(1)
+        };
+        std::thread::sleep(tick_interval);
         if let Ok(mut locked) = tick_state.lock() {
             let now = Instant::now();
             if locked.paused {
                 continue;
             }
-            if now.duration_since(locked.last_flush_instant) >= Duration::from_secs(60) {
+            if now.duration_since(locked.last_flush_instant) >= locked.flush_interval {
                 locked.last_flush_instant = now;
                 let _ = locked.storage.save_stats(&locked.stats);
                 if let Ok(rows) = snapshot_rows(&locked) {
@@ -139,11 +208,14 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
     });
 }
 
-fn on_key_press(state: &Arc<Mutex<CollectorState>>) {
+fn on_key_press(state: &Arc<Mutex<CollectorState>>, is_key_combo: bool) {
     if let Ok(mut locked) = state.lock() {
         let now = Instant::now();
         if locked.paused {
             locked.last_key_instant = now;
+            return;
+        }
+        if should_ignore_keypress(locked.ignore_key_combos, is_key_combo) {
             return;
         }
         let delta = now.duration_since(locked.last_key_instant);
@@ -154,17 +226,42 @@ fn on_key_press(state: &Arc<Mutex<CollectorState>>) {
             app_name,
             window_title,
         };
+        let session_gap = locked.session_gap;
         let entry = locked.stats.entry(key).or_insert(StatsValue {
             active_typing_ms: 0,
             key_count: 0,
             session_count: 0,
         });
         entry.key_count += 1;
-        if delta <= Duration::from_secs(5) {
+        if delta <= session_gap {
             entry.active_typing_ms += delta.as_millis() as u64;
         } else {
             entry.session_count += 1;
         }
+    }
+}
+
+fn should_ignore_keypress(ignore_key_combos: bool, is_key_combo: bool) -> bool {
+    ignore_key_combos && is_key_combo
+}
+
+#[cfg(not(target_os = "macos"))]
+fn on_key_event_non_macos(
+    state: &Arc<Mutex<CollectorState>>,
+    key: rdev::Key,
+    pressed: bool,
+) {
+    let (is_modifier_key, has_modifier_before) = if let Ok(mut locked) = state.lock() {
+        let is_modifier_key = ModifierState::is_modifier_key(key);
+        let has_modifier_before = locked.modifier_state.has_any_modifier();
+        locked.modifier_state.update(key, pressed);
+        (is_modifier_key, has_modifier_before)
+    } else {
+        return;
+    };
+
+    if pressed {
+        on_key_press(state, has_modifier_before && !is_modifier_key);
     }
 }
 
@@ -191,6 +288,12 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
     const CG_EVENT_TAP_PLACEMENT_HEAD_INSERT: CGEventTapPlacement = 0;
     const CG_EVENT_TAP_OPTION_LISTEN_ONLY: CGEventTapOptions = 1;
     const CG_EVENT_TYPE_KEY_DOWN: CGEventType = 10;
+    type CGEventFlags = u64;
+    const CG_EVENT_FLAG_MASK_SHIFT: CGEventFlags = 1 << 17;
+    const CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 1 << 18;
+    const CG_EVENT_FLAG_MASK_ALTERNATE: CGEventFlags = 1 << 19;
+    const CG_EVENT_FLAG_MASK_COMMAND: CGEventFlags = 1 << 20;
+    const CG_EVENT_FLAG_MASK_SECONDARY_FN: CGEventFlags = 1 << 23;
 
     extern "C" {
         fn CGEventTapCreate(
@@ -215,6 +318,7 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
         fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFRunLoopMode);
         fn CFRunLoopRun();
         fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+        fn CGEventGetFlags(event: CGEventRef) -> CGEventFlags;
         static kCFRunLoopCommonModes: CFRunLoopMode;
     }
 
@@ -226,7 +330,15 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
     ) -> CGEventRef {
         if type_ == CG_EVENT_TYPE_KEY_DOWN {
             let state = &*(user_info as *const Arc<Mutex<CollectorState>>);
-            on_key_press(state);
+            let flags = CGEventGetFlags(event);
+            let has_modifier = flags
+                & (CG_EVENT_FLAG_MASK_SHIFT
+                    | CG_EVENT_FLAG_MASK_CONTROL
+                    | CG_EVENT_FLAG_MASK_ALTERNATE
+                    | CG_EVENT_FLAG_MASK_COMMAND
+                    | CG_EVENT_FLAG_MASK_SECONDARY_FN)
+                != 0;
+            on_key_press(state, has_modifier);
         }
         event
     }
@@ -286,6 +398,7 @@ pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
         rows,
         paused: state.paused,
         keyboard_active: state.keyboard_active,
+        ignore_key_combos: state.ignore_key_combos,
         last_error: state.last_error.clone(),
         log_path: state.log_path.to_string_lossy().to_string(),
     }
@@ -293,6 +406,10 @@ pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
 
 pub fn set_paused(state: &mut CollectorState, paused: bool) {
     state.paused = paused;
+}
+
+pub fn set_ignore_key_combos(state: &mut CollectorState, ignore_key_combos: bool) {
+    state.ignore_key_combos = ignore_key_combos;
 }
 
 pub fn clear_stats(state: &mut CollectorState) {
@@ -306,9 +423,16 @@ fn current_minute() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{snapshot_rows, CollectorState, StatsKey, StatsValue};
+    use super::{
+        set_ignore_key_combos, should_ignore_keypress, snapshot, snapshot_rows, CollectorState,
+        StatsKey, StatsValue,
+    };
     use crate::storage::JsonFileStorage;
-    use std::{collections::HashMap, path::PathBuf, time::Instant};
+    use std::{
+        collections::HashMap,
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
 
     fn build_state(stats: HashMap<StatsKey, StatsValue>) -> CollectorState {
         let now = Instant::now();
@@ -316,14 +440,20 @@ mod tests {
             stats,
             last_key_instant: now,
             last_flush_instant: now,
+            collector_tick_interval: Duration::from_secs(1),
+            flush_interval: Duration::from_secs(60),
+            session_gap: Duration::from_secs(5),
             paused: false,
             keyboard_active: true,
+            ignore_key_combos: false,
             last_error: None,
             log_path: PathBuf::from("log.csv"),
             app_log_path: PathBuf::from("app.log"),
             storage: Box::new(JsonFileStorage {
                 path: PathBuf::from("detail.json"),
             }),
+            #[cfg(not(target_os = "macos"))]
+            modifier_state: ModifierState::default(),
         }
     }
 
@@ -361,6 +491,25 @@ mod tests {
         assert_eq!(rows[0].app_name, "A");
         assert_eq!(rows[1].date, "2026-02-09 10:01");
         assert_eq!(rows[1].app_name, "B");
+    }
+
+    #[test]
+    fn should_ignore_keypress_only_when_both_enabled_and_combo() {
+        assert!(!should_ignore_keypress(false, false));
+        assert!(!should_ignore_keypress(false, true));
+        assert!(!should_ignore_keypress(true, false));
+        assert!(should_ignore_keypress(true, true));
+    }
+
+    #[test]
+    fn set_ignore_key_combos_reflects_in_snapshot() {
+        let state = build_state(HashMap::new());
+        let mut state = state;
+        assert!(!snapshot(&state).ignore_key_combos);
+        set_ignore_key_combos(&mut state, true);
+        assert!(snapshot(&state).ignore_key_combos);
+        set_ignore_key_combos(&mut state, false);
+        assert!(!snapshot(&state).ignore_key_combos);
     }
 }
 

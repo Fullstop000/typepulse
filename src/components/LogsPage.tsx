@@ -14,6 +14,7 @@ function LogsPage({
   return (
     <section className="card">
       <div className="log-grid">
+        <h2>Typing Log</h2>
         <div className="log-panel">
           <div className="row">
             <button onClick={onRefreshTyping} className="secondary">
@@ -25,6 +26,7 @@ function LogsPage({
           </pre>
         </div>
         <div className="log-panel">
+          <h2>App Log</h2>
           <div className="row">
             <button onClick={onRefreshApp} className="secondary">
               刷新

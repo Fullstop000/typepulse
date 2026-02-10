@@ -147,6 +147,16 @@ h2 {
   gap: 12px;
 }
 
+.setting-row {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .card {
   background: #ffffff;
   border-radius: 16px;
@@ -207,15 +217,19 @@ h2 {
   left: 50%;
   top: calc(100% + 6px);
   transform: translateX(-50%);
+  width: max-content;
+  min-width: 140px;
+  max-width: 260px;
   padding: 6px 8px;
   border-radius: 8px;
   background: #0f172a;
   color: #e2e8f0;
   font-size: 12px;
   line-height: 16px;
-  max-width: 260px;
   white-space: normal;
   text-align: left;
+  word-break: break-word;
+  writing-mode: horizontal-tb;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
@@ -251,6 +265,13 @@ h2 {
 
 .chart-header h2 {
   margin: 0;
+}
+
+.section-subtitle {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .chart-svg {

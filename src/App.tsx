@@ -118,6 +118,16 @@ function App() {
     setSnapshot(data);
   };
 
+  const handleToggleIgnoreKeyCombos = async () => {
+    if (!snapshot) {
+      return;
+    }
+    const data = await invoke<Snapshot>("update_ignore_key_combos", {
+      ignoreKeyCombos: !snapshot.ignore_key_combos,
+    });
+    setSnapshot(data);
+  };
+
   return (
     <div className="layout">
       <Sidebar activeTab={activeTab} onChange={setActiveTab} />
@@ -156,8 +166,10 @@ function App() {
             <SettingsPage
               paused={snapshot.paused}
               keyboardActive={snapshot.keyboard_active}
+              ignoreKeyCombos={snapshot.ignore_key_combos}
               lastError={snapshot.last_error}
               onTogglePause={handleTogglePause}
+              onToggleIgnoreKeyCombos={handleToggleIgnoreKeyCombos}
             />
           )}
         </div>

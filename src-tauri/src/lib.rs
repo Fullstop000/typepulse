@@ -1,30 +1,36 @@
 use std::{
-    env,
+    env, fs,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
+use app_config::{load_app_config, save_app_config, AppConfig};
 use collector::{
-    clear_stats, new_collector_state, set_paused, snapshot, start_collector, StatsSnapshot,
+    clear_stats, new_collector_state, set_ignore_key_combos, set_paused, snapshot,
+    start_collector, StatsSnapshot,
 };
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Manager, Wry,
 };
 use tauri_plugin_opener::OpenerExt;
 
+mod app_config;
 mod collector;
 mod storage;
 
 struct AppState {
     inner: Arc<Mutex<collector::CollectorState>>,
+    config: Arc<Mutex<AppConfig>>,
+    config_path: PathBuf,
 }
 
 type AppMenuItem = MenuItem<Wry>;
 
 struct TraySummaryItems {
+    _tray_icon: tauri::tray::TrayIcon<Wry>,
     status_item: AppMenuItem,
     keyboard_item: AppMenuItem,
     toggle_item: AppMenuItem,
@@ -42,6 +48,7 @@ fn get_snapshot(state: tauri::State<AppState>) -> StatsSnapshot {
         rows: vec![],
         paused: false,
         keyboard_active: false,
+        ignore_key_combos: false,
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
     }
@@ -57,6 +64,30 @@ fn update_paused(state: tauri::State<AppState>, paused: bool) -> StatsSnapshot {
                 "paused via command"
             } else {
                 "resumed via command"
+            },
+        );
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+#[tauri::command]
+fn update_ignore_key_combos(
+    state: tauri::State<AppState>,
+    ignore_key_combos: bool,
+) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        set_ignore_key_combos(&mut locked, ignore_key_combos);
+        if let Ok(mut config) = state.config.lock() {
+            config.ignore_key_combos = ignore_key_combos;
+            let _ = save_app_config(&state.config_path, &config);
+        }
+        let _ = collector::append_app_log(
+            &locked.app_log_path,
+            if ignore_key_combos {
+                "ignore key combos enabled"
+            } else {
+                "ignore key combos disabled"
             },
         );
         return snapshot(&locked);
@@ -134,10 +165,54 @@ fn open_data_dir(state: tauri::State<AppState>, app: tauri::AppHandle) -> Result
         .map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn get_data_dir_size(state: tauri::State<AppState>) -> u64 {
+    let path = if let Ok(locked) = state.inner.lock() {
+        locked.log_path.clone()
+    } else {
+        return 0;
+    };
+    let data_dir = path.parent().unwrap_or(path.as_path()).to_path_buf();
+    let _ = fs::create_dir_all(&data_dir);
+    folder_size(&data_dir)
+}
+
+fn folder_size(path: &PathBuf) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![path.clone()];
+    while let Some(current) = stack.pop() {
+        let entries = match fs::read_dir(&current) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            if metadata.is_dir() {
+                stack.push(path);
+            } else {
+                total += metadata.len();
+            }
+        }
+    }
+    total
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(|app| {
             let data_dir = if cfg!(debug_assertions) {
                 env::current_dir()
@@ -153,6 +228,9 @@ pub fn run() {
             let log_path = data_dir.join("typingstats.csv");
             let app_log_path = data_dir.join("typingstats-app.log");
             let detail_path = data_dir.join("typingstats-details.json");
+            let config_path = data_dir.join("typingstats-config.json");
+            let config = load_app_config(&config_path).unwrap_or_default();
+            let tray_update_interval = config.tray_update_interval();
             let _ = collector::append_app_log(&app_log_path, "app started");
             let panic_log_path = app_log_path.clone();
             std::panic::set_hook(Box::new(move |info| {
@@ -162,24 +240,29 @@ pub fn run() {
                 log_path,
                 app_log_path,
                 detail_path,
+                &config,
             )));
             start_collector(state.clone());
             app.manage(AppState {
                 inner: state.clone(),
+                config: Arc::new(Mutex::new(config)),
+                config_path,
             });
             let tray_items = build_tray(app)?;
-            start_tray_updater(state, tray_items);
+            start_tray_updater(state, tray_items, tray_update_interval);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             update_paused,
+            update_ignore_key_combos,
             reset_stats,
             get_log_path,
             get_app_log_path,
             get_log_tail,
             get_app_log_tail,
-            open_data_dir
+            open_data_dir,
+            get_data_dir_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -254,13 +337,21 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon().cloned() {
-        builder = builder.icon(icon).icon_as_template(true);
+    let tray_icon = Image::from_bytes(include_bytes!("../icons/l_white.png"))
+        .ok()
+        .or_else(|| app.default_window_icon().cloned());
+    if let Some(icon) = tray_icon {
+        builder = builder.icon(icon);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.icon_as_template(true);
     }
 
-    builder.build(app)?;
+    let tray_icon = builder.build(app)?;
 
     Ok(TraySummaryItems {
+        _tray_icon: tray_icon,
         status_item,
         keyboard_item,
         toggle_item,
@@ -270,10 +361,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
     })
 }
 
-fn start_tray_updater(state: Arc<Mutex<collector::CollectorState>>, items: TraySummaryItems) {
+fn start_tray_updater(
+    state: Arc<Mutex<collector::CollectorState>>,
+    items: TraySummaryItems,
+    tick_interval: std::time::Duration,
+) {
     let _ = update_tray_summary(&items, &get_snapshot_from_state(&state));
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(tick_interval);
         let snapshot = get_snapshot_from_state(&state);
         let _ = update_tray_summary(&items, &snapshot);
     });
@@ -287,6 +382,7 @@ fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> Sta
         rows: vec![],
         paused: false,
         keyboard_active: false,
+        ignore_key_combos: false,
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
     }
