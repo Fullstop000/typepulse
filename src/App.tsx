@@ -10,6 +10,8 @@ import { SettingSection } from "./components/settings/types";
 import { GroupedRow, Snapshot, Totals, TrendGranularity } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
+type FilterRange = "today" | "yesterday" | "7d";
+
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">("stats");
@@ -17,7 +19,7 @@ function App() {
     useState<SettingSection>("capture");
   const [typingLogText, setTypingLogText] = useState("");
   const [appLogText, setAppLogText] = useState("");
-  const [filterDays, setFilterDays] = useState<1 | 7>(1);
+  const [filterRange, setFilterRange] = useState<FilterRange>("today");
   const [trendGranularity, setTrendGranularity] = useState<TrendGranularity>("5m");
 
   useEffect(() => {
@@ -59,11 +61,26 @@ function App() {
 
   const filteredRows = useMemo(() => {
     const rows = snapshot?.rows ?? [];
-    const cutoff = new Date();
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setDate(cutoff.getDate() - (filterDays - 1));
-    return rows.filter((row) => parseRowDate(row.date) >= cutoff);
-  }, [snapshot, filterDays]);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const sevenDaysStart = new Date(todayStart);
+    sevenDaysStart.setDate(sevenDaysStart.getDate() - 6);
+
+    return rows.filter((row) => {
+      const date = parseRowDate(row.date);
+      if (filterRange === "today") {
+        return date >= todayStart && date < tomorrowStart;
+      }
+      if (filterRange === "yesterday") {
+        return date >= yesterdayStart && date < todayStart;
+      }
+      return date >= sevenDaysStart && date < tomorrowStart;
+    });
+  }, [snapshot, filterRange]);
 
   const groupedRows = useMemo(() => {
     const grouped = new Map<string, GroupedRow>();
@@ -122,8 +139,8 @@ function App() {
           ) : activeTab === "stats" ? (
             <StatsPage
               snapshot={snapshot}
-              filterDays={filterDays}
-              onFilterChange={setFilterDays}
+              filterRange={filterRange}
+              onFilterChange={setFilterRange}
               totals={totals}
               groupedRows={groupedRows}
               trendSeries={trendSeries}

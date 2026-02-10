@@ -42,6 +42,8 @@ export type TrendSeries = {
   timestamps: number[];
   activeSeconds: number[];
   keyCounts: number[];
+  averageActiveSecondsPerSession: number[];
+  averageKeysPerSession: number[];
 };
 
 export type RunningAppInfo = {

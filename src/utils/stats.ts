@@ -32,8 +32,13 @@ const floorToBucket = (date: Date, bucketMinutes: number) => {
 
 export const formatMs = (ms: number) => {
   const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor(totalSeconds / 60);
+  const minuteRemainder = minutes % 60;
   const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minuteRemainder}m ${seconds}s`;
+  }
   return `${minutes}m ${seconds}s`;
 };
 
@@ -53,31 +58,47 @@ export const buildTrendSeries = (
   const start = new Date(
     end.getTime() - (bucketCount - 1) * config.bucketMinutes * 60 * 1000,
   );
-  const buckets = new Map<string, { activeMs: number; keyCount: number }>();
+  // Aggregate raw rows into the selected time bucket for trend computations.
+  const buckets = new Map<string, { activeMs: number; keyCount: number; sessionCount: number }>();
   for (const row of rows) {
     const rowDate = parseRowDate(row.date);
-    if (rowDate < start || rowDate > end) {
+    const bucketDate = floorToBucket(rowDate, config.bucketMinutes);
+    // Validate by bucket range so current in-progress bucket (especially 1d granularity) is included.
+    if (bucketDate < start || bucketDate > end) {
       continue;
     }
-    const bucketDate = floorToBucket(rowDate, config.bucketMinutes);
     const key = minuteKeyFromDate(bucketDate);
-    const current = buckets.get(key) ?? { activeMs: 0, keyCount: 0 };
+    const current = buckets.get(key) ?? { activeMs: 0, keyCount: 0, sessionCount: 0 };
     current.activeMs += row.active_typing_ms;
     current.keyCount += row.key_count;
+    current.sessionCount += row.session_count;
     buckets.set(key, current);
   }
   const timestamps: number[] = [];
   const activeSeconds: number[] = [];
   const keyCounts: number[] = [];
+  const averageActiveSecondsPerSession: number[] = [];
+  const averageKeysPerSession: number[] = [];
   for (let i = 0; i < bucketCount; i += 1) {
     const pointDate = new Date(
       start.getTime() + i * config.bucketMinutes * 60 * 1000,
     );
     const key = minuteKeyFromDate(pointDate);
-    const value = buckets.get(key) ?? { activeMs: 0, keyCount: 0 };
+    const value = buckets.get(key) ?? { activeMs: 0, keyCount: 0, sessionCount: 0 };
+    const averageActiveSeconds =
+      value.sessionCount > 0 ? Math.round(value.activeMs / 1000 / value.sessionCount) : 0;
+    const averageKeys = value.sessionCount > 0 ? value.keyCount / value.sessionCount : 0;
     timestamps.push(Math.floor(pointDate.getTime() / 1000));
     activeSeconds.push(Math.round(value.activeMs / 1000));
     keyCounts.push(value.keyCount);
+    averageActiveSecondsPerSession.push(averageActiveSeconds);
+    averageKeysPerSession.push(Number(averageKeys.toFixed(2)));
   }
-  return { timestamps, activeSeconds, keyCounts };
+  return {
+    timestamps,
+    activeSeconds,
+    keyCounts,
+    averageActiveSecondsPerSession,
+    averageKeysPerSession,
+  };
 };

@@ -7,8 +7,8 @@ import TrendChart from "./TrendChart";
 
 type StatsPageProps = {
   snapshot: Snapshot;
-  filterDays: 1 | 7;
-  onFilterChange: (value: 1 | 7) => void;
+  filterRange: "today" | "yesterday" | "7d";
+  onFilterChange: (value: "today" | "yesterday" | "7d") => void;
   totals: Totals;
   groupedRows: GroupedRow[];
   trendSeries: TrendSeries;
@@ -18,7 +18,7 @@ type StatsPageProps = {
 
 function StatsPage({
   snapshot,
-  filterDays,
+  filterRange,
   onFilterChange,
   totals,
   groupedRows,
@@ -29,7 +29,7 @@ function StatsPage({
   return (
     <>
       <StatusCard snapshot={snapshot} />
-      <FilterBar filterDays={filterDays} onChange={onFilterChange} />
+      <FilterBar filterRange={filterRange} onChange={onFilterChange} />
       <MetricsGrid totals={totals} />
       <TrendChart
         series={trendSeries}

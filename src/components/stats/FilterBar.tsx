@@ -1,27 +1,34 @@
 import { Box, Button, ButtonGroup, Flex, Text } from "@chakra-ui/react";
 
 type FilterBarProps = {
-  filterDays: 1 | 7;
-  onChange: (value: 1 | 7) => void;
+  filterRange: "today" | "yesterday" | "7d";
+  onChange: (value: "today" | "yesterday" | "7d") => void;
 };
 
-function FilterBar({ filterDays, onChange }: FilterBarProps) {
+function FilterBar({ filterRange, onChange }: FilterBarProps) {
   return (
     <Box bg="white" borderRadius="16px" p="5" boxShadow="sm">
       <Flex justify="space-between" align="center" gap="3" flexWrap="wrap">
         <Text fontWeight="semibold">时间范围</Text>
         <ButtonGroup size="sm" variant="outline" attached>
           <Button
-            colorPalette={filterDays === 1 ? "blue" : "gray"}
-            variant={filterDays === 1 ? "solid" : "outline"}
-            onClick={() => onChange(1)}
+            colorPalette={filterRange === "today" ? "blue" : "gray"}
+            variant={filterRange === "today" ? "solid" : "outline"}
+            onClick={() => onChange("today")}
           >
-            最近1天
+            今天
           </Button>
           <Button
-            colorPalette={filterDays === 7 ? "blue" : "gray"}
-            variant={filterDays === 7 ? "solid" : "outline"}
-            onClick={() => onChange(7)}
+            colorPalette={filterRange === "yesterday" ? "blue" : "gray"}
+            variant={filterRange === "yesterday" ? "solid" : "outline"}
+            onClick={() => onChange("yesterday")}
+          >
+            昨天
+          </Button>
+          <Button
+            colorPalette={filterRange === "7d" ? "blue" : "gray"}
+            variant={filterRange === "7d" ? "solid" : "outline"}
+            onClick={() => onChange("7d")}
           >
             最近7天
           </Button>
