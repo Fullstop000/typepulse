@@ -55,8 +55,10 @@ pub struct StatsSnapshot {
 pub struct CollectorState {
     // 统计聚合的明细数据（按时间/应用/窗口维度）
     stats: HashMap<StatsKey, StatsValue>,
-    // 最近一次按键的时间点，用于计算间隔与会话
-    last_key_instant: Instant,
+    // 最近一次“有效输入活动”时间点，用于计算会话间隔
+    last_typing_instant: Instant,
+    // 最近一次 tick 时间点，用于精确累加 active_typing_ms
+    last_tick_instant: Instant,
     // 最近一次刷盘时间点，用于控制落盘频率
     last_flush_instant: Instant,
     // 采集线程轮询周期
@@ -83,6 +85,10 @@ pub struct CollectorState {
     one_password_suggestion_pending: bool,
     // 最近一次错误信息（用于前端提示）
     last_error: Option<String>,
+    // 当前按下的非修饰键集合（用于消除长按自动重复）
+    pressed_non_modifier_keys: HashSet<String>,
+    // 当前持续输入归属的统计维度键（用于 tick 累加 active_typing_ms）
+    active_stats_key: Option<StatsKey>,
     // CSV 汇总文件路径
     pub log_path: PathBuf,
     // 应用运行日志文件路径
@@ -153,7 +159,8 @@ pub fn new_collector_state(
     }
     CollectorState {
         stats,
-        last_key_instant: now,
+        last_typing_instant: now,
+        last_tick_instant: now,
         last_flush_instant: now,
         collector_tick_interval: config.collector_tick_interval(),
         flush_interval: config.flush_interval(),
@@ -171,6 +178,8 @@ pub fn new_collector_state(
             .collect(),
         one_password_suggestion_pending: false,
         last_error: None,
+        pressed_non_modifier_keys: HashSet::new(),
+        active_stats_key: None,
         log_path,
         app_log_path,
         storage,
@@ -216,10 +225,16 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
         std::thread::sleep(tick_interval);
         if let Ok(mut locked) = tick_state.lock() {
             let now = Instant::now();
-            refresh_auto_pause_state(&mut locked);
-            if locked.paused {
-                continue;
-            }
+            let elapsed = now.duration_since(locked.last_tick_instant);
+            locked.last_tick_instant = now;
+            apply_collector_event(
+                &mut locked,
+                CollectorEvent::Tick {
+                    elapsed,
+                    capture_context: capture_context(),
+                    at: now,
+                },
+            );
             if now.duration_since(locked.last_flush_instant) >= locked.flush_interval {
                 locked.last_flush_instant = now;
                 let _ = locked.storage.save_stats(&locked.stats);
@@ -231,41 +246,140 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
     });
 }
 
-fn on_key_press(state: &Arc<Mutex<CollectorState>>, is_key_combo: bool) {
-    if let Ok(mut locked) = state.lock() {
-        let now = Instant::now();
-        let capture_context = capture_context();
-        locked.auto_paused = is_auto_paused(&locked, &capture_context);
-        locked.auto_pause_reason = auto_pause_reason(&locked, &capture_context);
+// Reset runtime key states when capture is paused to avoid stale key-down state.
+fn reset_active_typing_state(state: &mut CollectorState) {
+    state.pressed_non_modifier_keys.clear();
+    state.active_stats_key = None;
+    #[cfg(not(target_os = "macos"))]
+    {
+        state.modifier_state = ModifierState::default();
+    }
+}
 
-        if locked.paused
-            || locked.auto_paused
-            || should_ignore_keypress(locked.ignore_key_combos, is_key_combo)
-        {
-            return;
-        }
-        let delta = now.duration_since(locked.last_key_instant);
-        locked.last_key_instant = now;
-        let app_name = capture_context
-            .bundle_id
-            .clone()
-            .unwrap_or(capture_context.app_name);
-        let key = StatsKey {
-            date: current_minute(),
-            app_name,
-            window_title: capture_context.window_title,
-        };
-        let session_gap = locked.session_gap;
-        let entry = locked.stats.entry(key).or_insert(StatsValue {
-            active_typing_ms: 0,
-            key_count: 0,
-            session_count: 0,
-        });
-        entry.key_count += 1;
-        if delta <= session_gap {
-            entry.active_typing_ms += delta.as_millis() as u64;
-        } else {
-            entry.session_count += 1;
+// Build the current aggregation key from capture context.
+fn stats_key_from_context(capture_context: &CaptureContext) -> StatsKey {
+    let app_name = capture_context
+        .bundle_id
+        .clone()
+        .unwrap_or_else(|| capture_context.app_name.clone());
+    StatsKey {
+        date: current_minute(),
+        app_name,
+        window_title: capture_context.window_title.clone(),
+    }
+}
+
+// Apply a non-modifier key-down event. Repeated key-down of the same physical key is ignored.
+fn apply_non_modifier_key_down(
+    state: &mut CollectorState,
+    key_id: String,
+    is_key_combo: bool,
+    capture_context: CaptureContext,
+    now: Instant,
+) {
+    state.auto_paused = is_auto_paused(state, &capture_context);
+    state.auto_pause_reason = auto_pause_reason(state, &capture_context);
+    if state.paused
+        || state.auto_paused
+        || should_ignore_keypress(state.ignore_key_combos, is_key_combo)
+    {
+        return;
+    }
+    if !state.pressed_non_modifier_keys.insert(key_id) {
+        return;
+    }
+    let key = stats_key_from_context(&capture_context);
+    let delta = now.duration_since(state.last_typing_instant);
+    let session_gap = state.session_gap;
+    let entry = state.stats.entry(key.clone()).or_insert(StatsValue {
+        active_typing_ms: 0,
+        key_count: 0,
+        session_count: 0,
+    });
+    entry.key_count += 1;
+    if delta > session_gap {
+        entry.session_count += 1;
+    }
+    state.last_typing_instant = now;
+    state.active_stats_key = Some(key);
+}
+
+// Apply a non-modifier key-up event and clear active typing key when all keys are released.
+fn apply_non_modifier_key_up(state: &mut CollectorState, key_id: &str) {
+    state.pressed_non_modifier_keys.remove(key_id);
+    if state.pressed_non_modifier_keys.is_empty() {
+        state.active_stats_key = None;
+    }
+}
+
+// Accumulate active typing time from wall-clock tick while there is at least one key held down.
+fn accumulate_active_typing_for_tick(state: &mut CollectorState, elapsed: Duration, now: Instant) {
+    if state.pressed_non_modifier_keys.is_empty() {
+        return;
+    }
+    let Some(key) = state.active_stats_key.clone() else {
+        return;
+    };
+    let entry = state.stats.entry(key).or_insert(StatsValue {
+        active_typing_ms: 0,
+        key_count: 0,
+        session_count: 0,
+    });
+    entry.active_typing_ms += elapsed.as_millis() as u64;
+    state.last_typing_instant = now;
+}
+
+fn on_non_modifier_key_down(
+    state: &Arc<Mutex<CollectorState>>,
+    key_id: String,
+    is_key_combo: bool,
+) {
+    if let Ok(mut locked) = state.lock() {
+        apply_collector_event(
+            &mut locked,
+            CollectorEvent::NonModifierKeyDown {
+                key_id,
+                is_key_combo,
+                capture_context: capture_context(),
+                at: Instant::now(),
+            },
+        );
+    }
+}
+
+fn on_non_modifier_key_up(state: &Arc<Mutex<CollectorState>>, key_id: &str) {
+    if let Ok(mut locked) = state.lock() {
+        apply_collector_event(
+            &mut locked,
+            CollectorEvent::NonModifierKeyUp {
+                key_id: key_id.to_string(),
+            },
+        );
+    }
+}
+
+// Apply one collector event to state. This keeps runtime and test event semantics aligned.
+fn apply_collector_event(state: &mut CollectorState, event: CollectorEvent) {
+    match event {
+        CollectorEvent::NonModifierKeyDown {
+            key_id,
+            is_key_combo,
+            capture_context,
+            at,
+        } => apply_non_modifier_key_down(state, key_id, is_key_combo, capture_context, at),
+        CollectorEvent::NonModifierKeyUp { key_id } => apply_non_modifier_key_up(state, &key_id),
+        CollectorEvent::Tick {
+            elapsed,
+            capture_context,
+            at,
+        } => {
+            state.auto_paused = is_auto_paused(state, &capture_context);
+            state.auto_pause_reason = auto_pause_reason(state, &capture_context);
+            if state.paused || state.auto_paused {
+                reset_active_typing_state(state);
+                return;
+            }
+            accumulate_active_typing_for_tick(state, elapsed, at);
         }
     }
 }
@@ -285,8 +399,15 @@ fn on_key_event_non_macos(state: &Arc<Mutex<CollectorState>>, key: rdev::Key, pr
         return;
     };
 
+    if is_modifier_key {
+        return;
+    }
+
+    let key_id = format!("rdev:{:?}", key);
     if pressed {
-        on_key_press(state, has_modifier_before && !is_modifier_key);
+        on_non_modifier_key_down(state, key_id, has_modifier_before);
+    } else {
+        on_non_modifier_key_up(state, &key_id);
     }
 }
 
@@ -313,12 +434,15 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
     const CG_EVENT_TAP_PLACEMENT_HEAD_INSERT: CGEventTapPlacement = 0;
     const CG_EVENT_TAP_OPTION_LISTEN_ONLY: CGEventTapOptions = 1;
     const CG_EVENT_TYPE_KEY_DOWN: CGEventType = 10;
+    const CG_EVENT_TYPE_KEY_UP: CGEventType = 11;
     type CGEventFlags = u64;
     const CG_EVENT_FLAG_MASK_SHIFT: CGEventFlags = 1 << 17;
     const CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 1 << 18;
     const CG_EVENT_FLAG_MASK_ALTERNATE: CGEventFlags = 1 << 19;
     const CG_EVENT_FLAG_MASK_COMMAND: CGEventFlags = 1 << 20;
     const CG_EVENT_FLAG_MASK_SECONDARY_FN: CGEventFlags = 1 << 23;
+    type CGEventField = u32;
+    const CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE: CGEventField = 9;
 
     extern "C" {
         fn CGEventTapCreate(
@@ -344,6 +468,7 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
         fn CFRunLoopRun();
         fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
         fn CGEventGetFlags(event: CGEventRef) -> CGEventFlags;
+        fn CGEventGetIntegerValueField(event: CGEventRef, field: CGEventField) -> i64;
         static kCFRunLoopCommonModes: CFRunLoopMode;
     }
 
@@ -353,9 +478,12 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
         event: CGEventRef,
         user_info: *mut c_void,
     ) -> CGEventRef {
-        if type_ == CG_EVENT_TYPE_KEY_DOWN {
+        if type_ == CG_EVENT_TYPE_KEY_DOWN || type_ == CG_EVENT_TYPE_KEY_UP {
             let state = &*(user_info as *const Arc<Mutex<CollectorState>>);
             let flags = CGEventGetFlags(event);
+            let key_code =
+                CGEventGetIntegerValueField(event, CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE);
+            let key_id = format!("mac:{}", key_code);
             let has_modifier = flags
                 & (CG_EVENT_FLAG_MASK_SHIFT
                     | CG_EVENT_FLAG_MASK_CONTROL
@@ -363,7 +491,11 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
                     | CG_EVENT_FLAG_MASK_COMMAND
                     | CG_EVENT_FLAG_MASK_SECONDARY_FN)
                 != 0;
-            on_key_press(state, has_modifier);
+            if type_ == CG_EVENT_TYPE_KEY_DOWN {
+                on_non_modifier_key_down(state, key_id, has_modifier);
+            } else {
+                on_non_modifier_key_up(state, &key_id);
+            }
         }
         event
     }
@@ -374,7 +506,7 @@ fn listen_keypress_macos(state: Arc<Mutex<CollectorState>>) -> Result<(), String
             CG_EVENT_TAP_LOCATION_HID,
             CG_EVENT_TAP_PLACEMENT_HEAD_INSERT,
             CG_EVENT_TAP_OPTION_LISTEN_ONLY,
-            1u64 << CG_EVENT_TYPE_KEY_DOWN,
+            (1u64 << CG_EVENT_TYPE_KEY_DOWN) | (1u64 << CG_EVENT_TYPE_KEY_UP),
             callback,
             user_info,
         );
@@ -438,6 +570,9 @@ pub fn snapshot(state: &CollectorState) -> StatsSnapshot {
 
 pub fn set_paused(state: &mut CollectorState, paused: bool) {
     state.paused = paused;
+    if paused {
+        reset_active_typing_state(state);
+    }
 }
 
 pub fn set_ignore_key_combos(state: &mut CollectorState, ignore_key_combos: bool) {
@@ -486,8 +621,8 @@ fn current_minute() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        set_ignore_key_combos, should_ignore_keypress, snapshot, snapshot_rows, CollectorState,
-        StatsKey, StatsValue,
+        apply_collector_event, set_ignore_key_combos, should_ignore_keypress, snapshot,
+        snapshot_rows, CaptureContext, CollectorEvent, CollectorState, StatsKey, StatsValue,
     };
     use crate::app_config::MenuBarDisplayMode;
     use crate::storage::JsonFileStorage;
@@ -501,7 +636,8 @@ mod tests {
         let now = Instant::now();
         CollectorState {
             stats,
-            last_key_instant: now,
+            last_typing_instant: now,
+            last_tick_instant: now,
             last_flush_instant: now,
             collector_tick_interval: Duration::from_secs(1),
             flush_interval: Duration::from_secs(60),
@@ -515,6 +651,8 @@ mod tests {
             excluded_bundle_ids: HashSet::new(),
             one_password_suggestion_pending: false,
             last_error: None,
+            pressed_non_modifier_keys: HashSet::new(),
+            active_stats_key: None,
             log_path: PathBuf::from("log.csv"),
             app_log_path: PathBuf::from("app.log"),
             storage: Box::new(JsonFileStorage {
@@ -522,6 +660,61 @@ mod tests {
             }),
             #[cfg(not(target_os = "macos"))]
             modifier_state: ModifierState::default(),
+        }
+    }
+
+    // Event-stream harness for collector unit tests. Tests can feed key/tick events in order.
+    struct CollectorEventHarness {
+        state: CollectorState,
+        default_context: CaptureContext,
+    }
+
+    impl CollectorEventHarness {
+        fn new() -> Self {
+            Self {
+                state: build_state(HashMap::new()),
+                default_context: CaptureContext {
+                    app_name: "Editor".to_string(),
+                    window_title: "Doc".to_string(),
+                    bundle_id: Some("com.test.editor".to_string()),
+                    secure_input: false,
+                },
+            }
+        }
+
+        // Push one synthetic collector event.
+        fn push(&mut self, event: CollectorEvent) {
+            apply_collector_event(&mut self.state, event);
+        }
+
+        // Push key-down with default capture context.
+        fn key_down(&mut self, key_id: &str, is_key_combo: bool, at: Instant) {
+            self.push(CollectorEvent::NonModifierKeyDown {
+                key_id: key_id.to_string(),
+                is_key_combo,
+                capture_context: self.default_context.clone(),
+                at,
+            });
+        }
+
+        // Push key-up for one key id.
+        fn key_up(&mut self, key_id: &str) {
+            self.push(CollectorEvent::NonModifierKeyUp {
+                key_id: key_id.to_string(),
+            });
+        }
+
+        // Push one tick event with synthetic elapsed time.
+        fn tick(&mut self, elapsed: Duration, at: Instant) {
+            self.push(CollectorEvent::Tick {
+                elapsed,
+                capture_context: self.default_context.clone(),
+                at,
+            });
+        }
+
+        fn rows(&self) -> Vec<super::StatsRow> {
+            snapshot_rows(&self.state).unwrap()
         }
     }
 
@@ -579,6 +772,60 @@ mod tests {
         set_ignore_key_combos(&mut state, false);
         assert!(!snapshot(&state).ignore_key_combos);
     }
+
+    #[test]
+    fn repeated_key_down_is_counted_once_until_key_up() {
+        let mut harness = CollectorEventHarness::new();
+        let now = Instant::now();
+
+        harness.key_down("k:a", false, now);
+        harness.key_down("k:a", false, now + Duration::from_millis(100));
+
+        let rows = harness.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key_count, 1);
+
+        harness.key_up("k:a");
+        harness.key_down("k:a", false, now + Duration::from_millis(200));
+
+        let rows = harness.rows();
+        assert_eq!(rows[0].key_count, 2);
+    }
+
+    #[test]
+    fn active_typing_ms_is_accumulated_from_tick_while_key_held() {
+        let mut harness = CollectorEventHarness::new();
+        let now = Instant::now();
+
+        harness.key_down("k:a", false, now);
+        harness.tick(
+            Duration::from_millis(1200),
+            now + Duration::from_millis(1200),
+        );
+
+        let rows = harness.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].active_typing_ms, 1200);
+    }
+
+    #[test]
+    fn event_stream_stops_accumulating_after_key_up() {
+        let mut harness = CollectorEventHarness::new();
+        let now = Instant::now();
+
+        harness.key_down("k:a", false, now);
+        harness.tick(Duration::from_millis(500), now + Duration::from_millis(500));
+        harness.key_up("k:a");
+        harness.tick(
+            Duration::from_millis(700),
+            now + Duration::from_millis(1200),
+        );
+
+        let rows = harness.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].active_typing_ms, 500);
+        assert_eq!(rows[0].key_count, 1);
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -587,11 +834,31 @@ pub struct RunningAppInfo {
     pub name: String,
 }
 
+#[derive(Clone)]
 struct CaptureContext {
     app_name: String,
     window_title: String,
     bundle_id: Option<String>,
     secure_input: bool,
+}
+
+// Unified collector event model used by runtime handlers and unit tests.
+#[derive(Clone)]
+enum CollectorEvent {
+    NonModifierKeyDown {
+        key_id: String,
+        is_key_combo: bool,
+        capture_context: CaptureContext,
+        at: Instant,
+    },
+    NonModifierKeyUp {
+        key_id: String,
+    },
+    Tick {
+        elapsed: Duration,
+        capture_context: CaptureContext,
+        at: Instant,
+    },
 }
 
 fn capture_context() -> CaptureContext {
@@ -627,12 +894,6 @@ fn capture_context() -> CaptureContext {
         bundle_id: None,
         secure_input,
     }
-}
-
-fn refresh_auto_pause_state(state: &mut CollectorState) {
-    let context = capture_context();
-    state.auto_paused = is_auto_paused(state, &context);
-    state.auto_pause_reason = auto_pause_reason(state, &context);
 }
 
 fn is_auto_paused(state: &CollectorState, context: &CaptureContext) -> bool {
