@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Box, Button, Text } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 
 function StorageSettingsSection() {
   const [dataSize, setDataSize] = useState<number | null>(null);
@@ -9,9 +10,7 @@ function StorageSettingsSection() {
   };
 
   const formatBytes = (bytes: number) => {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    }
+    if (bytes < 1024) return `${bytes} B`;
     const units = ["KB", "MB", "GB", "TB"];
     let size = bytes;
     let index = -1;
@@ -27,14 +26,10 @@ function StorageSettingsSection() {
     let mounted = true;
     invoke<number>("get_data_dir_size")
       .then((size) => {
-        if (mounted) {
-          setDataSize(size);
-        }
+        if (mounted) setDataSize(size);
       })
       .catch(() => {
-        if (mounted) {
-          setDataSize(null);
-        }
+        if (mounted) setDataSize(null);
       });
     return () => {
       mounted = false;
@@ -42,14 +37,14 @@ function StorageSettingsSection() {
   }, []);
 
   return (
-    <section className="card">
-      <h2>数据存储</h2>
-      <p className="subtle">数据与日志保存在本机应用数据目录。</p>
-      {dataSize !== null ? <p className="subtle">已用空间：{formatBytes(dataSize)}</p> : null}
-      <div className="actions">
-        <button onClick={handleOpenDataDir}>前往数据目录</button>
-      </div>
-    </section>
+    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+      <Text fontSize="xl" fontWeight="semibold" mb="2">数据存储</Text>
+      <Text fontSize="sm" color="gray.600" mb="1">数据与日志保存在本机应用数据目录。</Text>
+      {dataSize !== null ? (
+        <Text fontSize="sm" color="gray.600" mb="4">已用空间：{formatBytes(dataSize)}</Text>
+      ) : null}
+      <Button onClick={handleOpenDataDir}>前往数据目录</Button>
+    </Box>
   );
 }
 

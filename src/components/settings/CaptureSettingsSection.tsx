@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Badge, Box, Button, HStack, Stack, Text } from "@chakra-ui/react";
+import { useMemo, useState } from "react";
 import { useSettingsContext } from "./SettingsContext";
 
 function CaptureSettingsSection() {
@@ -15,20 +16,18 @@ function CaptureSettingsSection() {
   } = useSettingsContext();
 
   const [runningAppsOpen, setRunningAppsOpen] = useState(false);
-  const [runningApps, setRunningApps] = useState<
-    { bundle_id: string; name: string }[]
-  >([]);
+  const [runningApps, setRunningApps] = useState<{ bundle_id: string; name: string }[]>([]);
   const [loadingRunningApps, setLoadingRunningApps] = useState(false);
+
   const hasPermission = snapshot.keyboard_active;
 
-  const excludedSet = useMemo(() => {
-    return new Set(snapshot.excluded_bundle_ids.map((item) => item.toLowerCase()));
-  }, [snapshot.excluded_bundle_ids]);
+  const excludedSet = useMemo(
+    () => new Set(snapshot.excluded_bundle_ids.map((item) => item.toLowerCase())),
+    [snapshot.excluded_bundle_ids],
+  );
 
   const statusMessage = useMemo(() => {
-    if (snapshot.paused) {
-      return "当前为手动暂停。";
-    }
+    if (snapshot.paused) return "当前为手动暂停。";
     if (snapshot.auto_paused && snapshot.auto_pause_reason === "blacklist") {
       return "当前焦点在忽略应用中，采集已自动暂停。";
     }
@@ -39,9 +38,7 @@ function CaptureSettingsSection() {
   }, [snapshot.auto_pause_reason, snapshot.auto_paused, snapshot.paused]);
 
   const handleOpenPermission = async () => {
-    await openUrl(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
-    );
+    await openUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
   };
 
   const handleOpenRunningApps = async () => {
@@ -57,151 +54,158 @@ function CaptureSettingsSection() {
 
   return (
     <>
-      <section className="card">
-        <h2>采集控制</h2>
-        <p className="subtle">{statusMessage}</p>
-        <div className="actions">
-          <button onClick={togglePause}>{snapshot.paused ? "继续采集" : "暂停采集"}</button>
-        </div>
-        <div className="setting-row">
-          <div>
-            <span className="setting-title">忽略组合键</span>
-            <p className="setting-desc">开启后不记录 Ctrl/Alt/Fn/Shift/Cmd + 任意键。</p>
-          </div>
-          <button className="secondary" onClick={toggleIgnoreKeyCombos}>
-            {snapshot.ignore_key_combos ? "已开启" : "已关闭"}
-          </button>
-        </div>
-        <div className="setting-row">
-          <div>
-            <span className="setting-title">密码输入保护</span>
-            <p className="setting-desc">
-              检测到密码输入框时，自动忽略输入内容，不会写入统计。
-            </p>
-          </div>
-          <span className="ok">已启用</span>
-        </div>
-        <div className="setting-row">
-          <div>
-            <span className="setting-title">系统采集授权</span>
-            <p className="setting-desc">检查输入监控与辅助功能授权状态。</p>
-          </div>
-          {!hasPermission ? (
-            <button className="secondary" onClick={handleOpenPermission}>
-              前往授权
-            </button>
-          ) : (
-            <span className="ok">已授权</span>
-          )}
-        </div>
-        <div className="setting-row">
-          <div>
-            <span className="setting-title">忽略应用</span>
-            <p className="setting-desc">管理已忽略应用列表。</p>
-          </div>
-          <button className="secondary" onClick={handleOpenRunningApps}>
-            + 添加应用
-          </button>
-        </div>
+      <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+        <Text fontSize="xl" fontWeight="semibold" mb="2">采集控制</Text>
+        <Text fontSize="sm" color="gray.600" mb="4">{statusMessage}</Text>
+
+        <Button onClick={togglePause} mb="4">{snapshot.paused ? "继续采集" : "暂停采集"}</Button>
+
+        <Stack gap="4">
+          <HStack justify="space-between" align="start" flexWrap="wrap" gap="3">
+            <Box>
+              <Text fontWeight="semibold">忽略组合键</Text>
+              <Text fontSize="sm" color="gray.600">开启后不记录 Ctrl/Alt/Fn/Shift/Cmd + 任意键。</Text>
+            </Box>
+            <Button variant="outline" onClick={toggleIgnoreKeyCombos}>
+              {snapshot.ignore_key_combos ? "已开启" : "已关闭"}
+            </Button>
+          </HStack>
+
+          <HStack justify="space-between" align="start" flexWrap="wrap" gap="3">
+            <Box>
+              <Text fontWeight="semibold">密码输入保护</Text>
+              <Text fontSize="sm" color="gray.600">检测到密码输入框时，自动忽略输入内容，不会写入统计。</Text>
+            </Box>
+            <Badge colorPalette="green">已启用</Badge>
+          </HStack>
+
+          <HStack justify="space-between" align="start" flexWrap="wrap" gap="3">
+            <Box>
+              <Text fontWeight="semibold">系统采集授权</Text>
+              <Text fontSize="sm" color="gray.600">检查输入监控与辅助功能授权状态。</Text>
+            </Box>
+            {!hasPermission ? (
+              <Button variant="outline" onClick={handleOpenPermission}>前往授权</Button>
+            ) : (
+              <Badge colorPalette="green">已授权</Badge>
+            )}
+          </HStack>
+
+          <HStack justify="space-between" align="start" flexWrap="wrap" gap="3">
+            <Box>
+              <Text fontWeight="semibold">忽略应用</Text>
+              <Text fontSize="sm" color="gray.600">管理已忽略应用列表。</Text>
+            </Box>
+            <Button variant="outline" onClick={handleOpenRunningApps}>+ 添加应用</Button>
+          </HStack>
+        </Stack>
+
         {snapshot.one_password_suggestion_pending ? (
-          <div className="suggestion-card">
-            <p className="label">检测到你安装了 1Password，是否加入忽略列表？</p>
-            <div className="actions">
-              <button onClick={acceptOnePasswordSuggestion}>加入忽略列表</button>
-              <button className="secondary" onClick={dismissOnePasswordSuggestion}>
-                暂不
-              </button>
-            </div>
-          </div>
+          <Box mt="4" borderWidth="1px" borderColor="blue.200" bg="blue.50" borderRadius="10px" p="4">
+            <Text mb="3">检测到你安装了 1Password，是否加入忽略列表？</Text>
+            <HStack>
+              <Button size="sm" onClick={acceptOnePasswordSuggestion}>加入忽略列表</Button>
+              <Button size="sm" variant="outline" onClick={dismissOnePasswordSuggestion}>暂不</Button>
+            </HStack>
+          </Box>
         ) : null}
-        <div className="table exclusion-table">
-          <div className="table-header exclusion-row">
-            <span>Bundle ID</span>
-            <span>操作</span>
-          </div>
+
+        <Box mt="5" borderWidth="1px" borderColor="gray.200" borderRadius="12px" overflow="hidden">
+          <HStack px="4" py="3" bg="gray.50" fontWeight="semibold" fontSize="sm" justify="space-between">
+            <Text flex="1">Bundle ID</Text>
+            <Text flex="0 0 auto">操作</Text>
+          </HStack>
           {snapshot.excluded_bundle_ids.length === 0 ? (
-            <div className="table-empty">暂无忽略应用</div>
+            <Text px="4" py="6" color="gray.500" textAlign="center">暂无忽略应用</Text>
           ) : (
             snapshot.excluded_bundle_ids.map((bundleId) => (
-              <div key={bundleId} className="table-row exclusion-row">
-                <span className="mono truncate" title={bundleId}>
+              <HStack key={bundleId} px="4" py="3" borderTopWidth="1px" borderColor="gray.100" justify="space-between" gap="3">
+                <Text fontFamily="mono" fontSize="sm" truncate title={bundleId}>
                   {bundleId}
-                </span>
-                <button className="secondary" onClick={() => removeAppExclusion(bundleId)}>
-                  移除
-                </button>
-              </div>
+                </Text>
+                <Button size="sm" variant="outline" onClick={() => removeAppExclusion(bundleId)}>移除</Button>
+              </HStack>
             ))
           )}
-        </div>
-        <div className="status">
-          <div>
-            <span className="label">输入监控</span>
-            <span className={hasPermission ? "ok" : "bad"}>
-              {hasPermission ? "已授权" : "未授权"}
-            </span>
-          </div>
-          <div>
-            <span className="label">辅助功能</span>
-            <span className={hasPermission ? "ok" : "bad"}>
-              {hasPermission ? "已授权" : "未授权"}
-            </span>
-          </div>
-        </div>
-        {snapshot.last_error ? <p className="error">{snapshot.last_error}</p> : null}
-      </section>
+        </Box>
+
+        <HStack gap="6" mt="5" flexWrap="wrap">
+          <HStack>
+            <Text fontSize="sm">输入监控</Text>
+            <Badge colorPalette={hasPermission ? "green" : "red"}>{hasPermission ? "已授权" : "未授权"}</Badge>
+          </HStack>
+          <HStack>
+            <Text fontSize="sm">辅助功能</Text>
+            <Badge colorPalette={hasPermission ? "green" : "red"}>{hasPermission ? "已授权" : "未授权"}</Badge>
+          </HStack>
+        </HStack>
+
+        {snapshot.last_error ? (
+          <Text mt="4" color="red.600" fontSize="sm">{snapshot.last_error}</Text>
+        ) : null}
+      </Box>
 
       {runningAppsOpen ? (
-        <div className="modal-overlay" onClick={() => setRunningAppsOpen(false)}>
-          <section className="card modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="row running-apps-header">
-              <h2>正在运行的应用</h2>
-              <button className="secondary" onClick={() => setRunningAppsOpen(false)}>
-                关闭
-              </button>
-            </div>
-            <div className="modal-body">
-              {loadingRunningApps ? (
-                <p className="subtle">加载中…</p>
-              ) : (
-                <div className="table exclusion-table">
-                  <div className="table-header running-app-row">
-                    <span>应用</span>
-                    <span>Bundle ID</span>
-                    <span>操作</span>
-                  </div>
-                  {runningApps.length === 0 ? (
-                    <div className="table-empty">未检测到可用应用</div>
-                  ) : (
-                    runningApps.map((app) => {
-                      const selected = excludedSet.has(app.bundle_id.toLowerCase());
-                      return (
-                        <div key={app.bundle_id} className="table-row running-app-row">
-                          <span className="truncate" title={app.name}>
-                            {app.name}
-                          </span>
-                          <span className="mono truncate" title={app.bundle_id}>
-                            {app.bundle_id}
-                          </span>
-                          <button
-                            className="secondary"
-                            onClick={() =>
-                              selected
-                                ? removeAppExclusion(app.bundle_id)
-                                : addAppExclusion(app.bundle_id)
-                            }
-                          >
-                            {selected ? "已忽略" : "添加"}
-                          </button>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
+        <Box
+          position="fixed"
+          inset="0"
+          bg="blackAlpha.600"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={1000}
+          onClick={() => setRunningAppsOpen(false)}
+        >
+          <Box
+            bg="white"
+            borderRadius="12px"
+            p="5"
+            w="min(900px, 90vw)"
+            maxH="80vh"
+            overflow="auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <HStack justify="space-between" mb="4">
+              <Text fontSize="lg" fontWeight="semibold">正在运行的应用</Text>
+              <Button size="sm" variant="outline" onClick={() => setRunningAppsOpen(false)}>关闭</Button>
+            </HStack>
+            {loadingRunningApps ? (
+              <Text color="gray.600">加载中…</Text>
+            ) : (
+              <Box borderWidth="1px" borderColor="gray.200" borderRadius="12px" overflow="hidden">
+                <HStack px="4" py="3" bg="gray.50" fontWeight="semibold" fontSize="sm" justify="space-between" gap="3">
+                  <Text flex="1">应用</Text>
+                  <Text flex="1">Bundle ID</Text>
+                  <Text flex="0 0 auto">操作</Text>
+                </HStack>
+                {runningApps.length === 0 ? (
+                  <Text px="4" py="6" color="gray.500" textAlign="center">未检测到可用应用</Text>
+                ) : (
+                  runningApps.map((app) => {
+                    const selected = excludedSet.has(app.bundle_id.toLowerCase());
+                    return (
+                      <HStack key={app.bundle_id} px="4" py="3" borderTopWidth="1px" borderColor="gray.100" justify="space-between" gap="3">
+                        <Text flex="1" truncate title={app.name}>{app.name}</Text>
+                        <Text flex="1" fontFamily="mono" fontSize="sm" truncate title={app.bundle_id}>{app.bundle_id}</Text>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            selected
+                              ? removeAppExclusion(app.bundle_id)
+                              : addAppExclusion(app.bundle_id)
+                          }
+                        >
+                          {selected ? "已忽略" : "添加"}
+                        </Button>
+                      </HStack>
+                    );
+                  })
+                )}
+              </Box>
+            )}
+          </Box>
+        </Box>
       ) : null}
     </>
   );
