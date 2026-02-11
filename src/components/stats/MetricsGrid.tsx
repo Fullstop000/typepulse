@@ -27,16 +27,13 @@ function buildFunFacts(totals: Totals) {
   // Key constants
   const keyStrokeDistanceMm = 4; // ~4mm travel distance per key
   const fingerTravelCm = 2; // ~2cm finger travel per key (average)
-  const avgWordLength = 5; // English word length + space = 6 chars
   const chineseCharStrokes = 3; // Avg keystrokes per Chinese character
   
   // Heights & Distances
   const eiffelTowerM = 330;
-  const marathonKm = 42.195;
   
   // Literary works (approximate keystrokes/words)
   const oldManAndSeaWords = 27000; // ~27k words
-  const harryPotterSeriesWords = 1084170; // ~1M words
   const gaokaoEssayChars = 800; // 800 chars
   
   // Calculations
@@ -47,7 +44,7 @@ function buildFunFacts(totals: Totals) {
   
   const timeFactCandidates = [
     `你的活跃输入时长相当于听了 ${Math.max(1, Math.floor(activeMinutes / songDurationMin))} 首歌。`,
-    `这段专注的时间，足够煮 ${Math.max(1, (activeMinutes / instantNoodleMin).toFixed(1))} 碗泡面了。`,
+    `这段专注的时间，足够煮 ${Math.max(1, Number((activeMinutes / instantNoodleMin).toFixed(1)))} 碗泡面了。`,
     `如果把你输入的每一秒都变成一帧电影，你可以拍一部 ${Math.max(1, Math.floor(activeSeconds / movieFrameRate))} 秒的微电影。`,
     `你的键盘敲击时长占比达到了 ${(activeSeconds / daySeconds * 100).toFixed(4)}% 的“全天进度条”。`,
     `在这 ${formatMs(totals.active)} 里，地球已经带着你公转了约 ${(activeSeconds * 29.78).toFixed(1)} 公里。`,
