@@ -22,10 +22,12 @@ This file defines repository-specific development rules for Codex agents.
 - Keep computation helpers in `src/utils/`.
 - Use function components + hooks with explicit props types.
 - Use `useMemo` for derived data (grouping/filtering/trend building) from snapshot rows.
+- Prefer [`uPlot`](https://github.com/leeoniya/uPlot) for chart rendering to keep interaction and rendering performance stable on large datasets.
 - Keep naming consistent:
   - Components/files: PascalCase.
   - Variables/functions/types: camelCase/PascalCase by TypeScript convention.
 - UI copy can be Chinese; code identifiers should stay English.
+- For user-facing copy (titles, descriptions, helper text), prioritize vivid and easy-to-understand language; avoid flat, overly literal, or rigidly technical phrasing.
 
 ## 3.1) Chakra UI v3 Conventions (Required)
 - Use Chakra UI v3 as the default UI layer for frontend screens.
