@@ -1,4 +1,4 @@
-import { Badge, Box, Grid, HStack, Stack, Text } from "@chakra-ui/react";
+import { Badge, Box, HStack, Stack, Text } from "@chakra-ui/react";
 import { DailyTopKeysRow } from "../../types";
 
 type DailyTopKeysPanelProps = {
@@ -14,10 +14,14 @@ function keyLabel(key: string): string {
     esc: "Esc",
     backspace: "Backspace",
     delete: "Delete",
-    left: "Left Arrow",
-    right: "Right Arrow",
-    up: "Up Arrow",
-    down: "Down Arrow",
+    left: "←",
+    right: "→",
+    up: "↑",
+    down: "↓",
+    command: "Cmd",
+    shift: "Shift",
+    control: "Ctrl",
+    option: "Opt",
   };
   if (baseMap[key]) {
     return baseMap[key];
@@ -30,7 +34,7 @@ function keyLabel(key: string): string {
 
 function DailyTopKeysPanel({ rows }: DailyTopKeysPanelProps) {
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm" h="full">
       <HStack justify="space-between" mb="4" align="center">
         <Text fontSize="xl" fontWeight="semibold">
           每日按键 Top 5
@@ -45,30 +49,48 @@ function DailyTopKeysPanel({ rows }: DailyTopKeysPanelProps) {
           当前时间范围内暂无可展示的按键数据。
         </Text>
       ) : (
-        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap="4">
-          {rows.map((row) => (
-            <Box key={row.date} borderWidth="1px" borderColor="gray.200" borderRadius="12px" p="4">
-              <Text fontSize="sm" fontWeight="semibold" color="gray.700" mb="3">
-                {row.date}
-              </Text>
-              <Stack gap="2">
-                {row.keys.map((item, index) => (
-                  <HStack key={`${row.date}-${item.key}`} justify="space-between">
-                    <HStack gap="2">
-                      <Badge colorPalette="blue" variant="subtle">
-                        #{index + 1}
-                      </Badge>
-                      <Text fontSize="sm">{keyLabel(item.key)}</Text>
-                    </HStack>
-                    <Badge variant="outline" colorPalette="gray">
-                      {item.count}
-                    </Badge>
-                  </HStack>
-                ))}
-              </Stack>
-            </Box>
-          ))}
-        </Grid>
+        <Stack gap="4">
+          {rows.map((row) => {
+             const maxCount = Math.max(...row.keys.map((k) => k.count), 0);
+             return (
+              <Box key={row.date} borderWidth="1px" borderColor="gray.200" borderRadius="12px" p="4">
+                <Text fontSize="sm" fontWeight="semibold" color="gray.700" mb="3">
+                  {row.date}
+                </Text>
+                <Stack gap="2">
+                  {row.keys.map((item, index) => {
+                    const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                    return (
+                      <Box key={`${row.date}-${item.key}`} position="relative" borderRadius="md" overflow="hidden">
+                        <Box
+                          position="absolute"
+                          top="0"
+                          bottom="0"
+                          left="0"
+                          width={`${percentage}%`}
+                          bg="blue.50"
+                          opacity="0.6"
+                          zIndex={0}
+                        />
+                        <HStack justify="space-between" position="relative" zIndex={1} px="2" py="1">
+                          <HStack gap="2">
+                            <Badge colorPalette="blue" variant="subtle" size="sm" w="5" textAlign="center" justifyContent="center">
+                              {index + 1}
+                            </Badge>
+                            <Text fontSize="sm" fontWeight="medium">{keyLabel(item.key)}</Text>
+                          </HStack>
+                          <Text fontSize="xs" color="gray.600">
+                            {item.count}
+                          </Text>
+                        </HStack>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            );
+          })}
+        </Stack>
       )}
     </Box>
   );
