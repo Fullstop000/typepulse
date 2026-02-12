@@ -136,11 +136,7 @@ impl JsonFileStorage {
     // Convert event timestamp to local date prefix for per-day analytics file sharding.
     fn date_prefix_from_timestamp_ms(timestamp_ms: i64) -> Option<String> {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms)?;
-        Some(
-            dt.with_timezone(&Local)
-                .format("%Y-%m-%d")
-                .to_string(),
-        )
+        Some(dt.with_timezone(&Local).format("%Y-%m-%d").to_string())
     }
 
     // Parse both legacy `Vec<StoredRow>` and structured payload with `rows` field.
