@@ -9,8 +9,9 @@ use crate::{
     collector::{
         self, add_excluded_bundle_id, bundle_id_from_app_path, clear_stats,
         remove_excluded_bundle_id, running_apps, set_excluded_bundle_ids, set_ignore_key_combos,
-        set_menu_bar_display_mode, set_one_password_suggestion_pending, set_paused, snapshot,
-        RunningAppInfo, StatsSnapshot,
+        set_menu_bar_display_mode, set_one_password_suggestion_pending, set_paused,
+        set_shortcut_rules, snapshot, snapshot_shortcut_rows_by_range, RunningAppInfo,
+        ShortcutStatRow, StatsSnapshot,
     },
     AppState,
 };
@@ -33,7 +34,20 @@ pub(crate) fn get_snapshot(state: State<AppState>) -> StatsSnapshot {
         tray_display_mode: MenuBarDisplayMode::default().as_str().to_string(),
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
+        shortcut_stats: vec![],
     }
+}
+
+/// 按时间范围返回快捷键排行榜（today / yesterday / 7d）。
+#[tauri::command]
+pub(crate) fn get_shortcut_stats_by_range(
+    state: State<AppState>,
+    range: String,
+) -> Vec<ShortcutStatRow> {
+    if let Ok(locked) = state.inner.lock() {
+        return snapshot_shortcut_rows_by_range(&locked, &range);
+    }
+    vec![]
 }
 
 /// 更新采集暂停状态，并返回最新快照。
@@ -74,6 +88,51 @@ pub(crate) fn update_ignore_key_combos(
                 "ignore key combos disabled"
             },
         );
+        return snapshot(&locked);
+    }
+    get_snapshot(state)
+}
+
+/// 更新快捷键统计规则配置并返回最新快照。
+#[tauri::command]
+pub(crate) fn update_shortcut_rules(
+    state: State<AppState>,
+    require_cmd_or_ctrl: bool,
+    allow_alt_only: bool,
+    min_modifiers: u8,
+    allowlist: Vec<String>,
+    blocklist: Vec<String>,
+) -> StatsSnapshot {
+    if let Ok(mut locked) = state.inner.lock() {
+        set_shortcut_rules(
+            &mut locked,
+            require_cmd_or_ctrl,
+            allow_alt_only,
+            min_modifiers,
+            &allowlist,
+            &blocklist,
+        );
+        if let Ok(mut config) = state.config.lock() {
+            config.shortcut_require_cmd_or_ctrl = require_cmd_or_ctrl;
+            config.shortcut_allow_alt_only = allow_alt_only;
+            config.shortcut_min_modifiers = min_modifiers.max(1);
+            config.shortcut_allowlist = allowlist
+                .iter()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect();
+            config.shortcut_allowlist.sort();
+            config.shortcut_allowlist.dedup();
+            config.shortcut_blocklist = blocklist
+                .iter()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect();
+            config.shortcut_blocklist.sort();
+            config.shortcut_blocklist.dedup();
+            let _ = save_app_config(&state.config_path, &config);
+        }
+        let _ = collector::append_app_log(&locked.app_log_path, "shortcut rules updated");
         return snapshot(&locked);
     }
     get_snapshot(state)

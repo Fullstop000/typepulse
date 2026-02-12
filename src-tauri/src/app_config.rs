@@ -65,6 +65,16 @@ pub(crate) struct AppConfig {
     pub(crate) excluded_bundle_ids: Vec<String>,
     /// 是否已经处理过首次 1Password 忽略建议。
     pub(crate) one_password_suggestion_handled: bool,
+    /// 快捷键统计是否要求包含 Cmd 或 Ctrl。
+    pub(crate) shortcut_require_cmd_or_ctrl: bool,
+    /// 是否允许仅 Alt/Opt 作为快捷键主修饰键。
+    pub(crate) shortcut_allow_alt_only: bool,
+    /// 快捷键最小修饰键数量（至少为 1）。
+    pub(crate) shortcut_min_modifiers: u8,
+    /// 快捷键白名单（标准化 id，非空时仅统计列表内组合）。
+    pub(crate) shortcut_allowlist: Vec<String>,
+    /// 快捷键黑名单（标准化 id，优先级高于白名单）。
+    pub(crate) shortcut_blocklist: Vec<String>,
 }
 
 impl Default for AppConfig {
@@ -81,6 +91,11 @@ impl Default for AppConfig {
                 .map(|v| v.to_ascii_lowercase())
                 .collect(),
             one_password_suggestion_handled: false,
+            shortcut_require_cmd_or_ctrl: true,
+            shortcut_allow_alt_only: false,
+            shortcut_min_modifiers: 1,
+            shortcut_allowlist: vec![],
+            shortcut_blocklist: vec![],
         }
     }
 }
@@ -133,5 +148,23 @@ fn normalize_excluded_bundle_ids(mut config: AppConfig) -> AppConfig {
         .collect();
     config.excluded_bundle_ids.sort();
     config.excluded_bundle_ids.dedup();
+    // Normalize shortcut rules for deterministic matching.
+    config.shortcut_min_modifiers = config.shortcut_min_modifiers.max(1);
+    config.shortcut_allowlist = config
+        .shortcut_allowlist
+        .iter()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+    config.shortcut_allowlist.sort();
+    config.shortcut_allowlist.dedup();
+    config.shortcut_blocklist = config
+        .shortcut_blocklist
+        .iter()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+    config.shortcut_blocklist.sort();
+    config.shortcut_blocklist.dedup();
     config
 }

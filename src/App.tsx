@@ -7,7 +7,7 @@ import SettingsPage from "./components/settings/page/SettingsPage";
 import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
 import { SettingSection } from "./components/settings/types";
-import { GroupedRow, Snapshot, Totals, TrendGranularity } from "./types";
+import { GroupedRow, ShortcutStatRow, Snapshot, Totals, TrendGranularity } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
 type FilterRange = "today" | "yesterday" | "7d";
@@ -21,12 +21,26 @@ function App() {
   const [appLogText, setAppLogText] = useState("");
   const [filterRange, setFilterRange] = useState<FilterRange>("today");
   const [trendGranularity, setTrendGranularity] = useState<TrendGranularity>("5m");
+  const [filteredShortcutStats, setFilteredShortcutStats] = useState<ShortcutStatRow[]>([]);
 
   useEffect(() => {
     let mounted = true;
     const fetchSnapshot = async () => {
-      const data = await invoke<Snapshot>("get_snapshot");
-      if (mounted) setSnapshot(data);
+      try {
+        const [data, shortcutRows] = await Promise.all([
+          invoke<Snapshot>("get_snapshot"),
+          invoke<ShortcutStatRow[]>("get_shortcut_stats_by_range", { range: filterRange }),
+        ]);
+        if (mounted) {
+          setSnapshot(data);
+          setFilteredShortcutStats(shortcutRows);
+        }
+      } catch (error) {
+        if (mounted) {
+          setFilteredShortcutStats([]);
+        }
+        console.error("failed to refresh snapshot", error);
+      }
     };
     fetchSnapshot();
     const id = setInterval(fetchSnapshot, 1000);
@@ -34,7 +48,7 @@ function App() {
       mounted = false;
       clearInterval(id);
     };
-  }, []);
+  }, [filterRange]);
 
   useEffect(() => {
     if (activeTab !== "logs") return;
@@ -138,7 +152,6 @@ function App() {
             </Box>
           ) : activeTab === "stats" ? (
             <StatsPage
-              snapshot={snapshot}
               filterRange={filterRange}
               onFilterChange={setFilterRange}
               totals={totals}
@@ -146,6 +159,7 @@ function App() {
               trendSeries={trendSeries}
               trendGranularity={trendGranularity}
               onTrendGranularityChange={setTrendGranularity}
+              shortcutRows={filteredShortcutStats}
             />
           ) : activeTab === "logs" ? (
             <LogsPage

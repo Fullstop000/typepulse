@@ -19,6 +19,7 @@ export type Snapshot = {
   tray_display_mode: MenuBarDisplayMode;
   last_error: string | null;
   log_path: string;
+  shortcut_stats: ShortcutStatRow[];
 };
 
 export type MenuBarDisplayMode = "icon_only" | "text_only" | "icon_text";
@@ -49,4 +50,15 @@ export type TrendSeries = {
 export type RunningAppInfo = {
   bundle_id: string;
   name: string;
+};
+
+export type ShortcutAppUsageRow = {
+  app_name: string;
+  count: number;
+};
+
+export type ShortcutStatRow = {
+  shortcut_id: string;
+  count: number;
+  apps: ShortcutAppUsageRow[];
 };
