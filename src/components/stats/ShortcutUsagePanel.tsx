@@ -2,7 +2,6 @@ import {
   Accordion,
   Badge,
   Box,
-  Grid,
   HStack,
   Stack,
   Text,
@@ -21,25 +20,38 @@ type BadgeType = "clipboard" | "undo" | "switch";
 
 const BADGE_CONFIG: Record<
   BadgeType,
-  { emoji: string; color: string; title: string; desc: string }
+  {
+    mark: string;
+    title: string;
+    desc: string;
+    ring: string;
+    bg: string;
+    border: string;
+  }
 > = {
   clipboard: {
-    emoji: "📋",
-    color: "blue",
+    mark: "CP",
     title: "剪贴板永动机",
     desc: "复制粘贴停不下来",
+    ring: "linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)",
+    bg: "blue.50",
+    border: "blue.200",
   },
   undo: {
-    emoji: "⏪",
-    color: "orange",
+    mark: "Z",
     title: "时光倒流",
     desc: "撤销操作不仅是后悔药",
+    ring: "linear-gradient(135deg, #c2410c 0%, #fdba74 100%)",
+    bg: "orange.50",
+    border: "orange.200",
   },
   switch: {
-    emoji: "🔀",
-    color: "purple",
+    mark: "TAB",
     title: "窗口蹦迪王",
     desc: "在应用间反复横跳",
+    ring: "linear-gradient(135deg, #7c3aed 0%, #c4b5fd 100%)",
+    bg: "purple.50",
+    border: "purple.200",
   },
 };
 
@@ -85,47 +97,57 @@ function ShortcutUsagePanel({ rows }: ShortcutUsagePanelProps) {
       </HStack>
 
       {badges.length > 0 && (
-        <Grid
-          templateColumns="repeat(auto-fill, minmax(100px, 1fr))"
-          gap="3"
-          mb="5"
-        >
-          {badges.map((key) => {
-            const config = BADGE_CONFIG[key];
-            return (
-              <Box
-                key={key}
-                bg={`${config.color}.50`}
-                p="3"
-                borderRadius="xl"
-                borderWidth="1px"
-                borderColor={`${config.color}.100`}
-                transition="all 0.2s"
-                _hover={{ transform: "translateY(-2px)", boxShadow: "sm" }}
-              >
-                <Text fontSize="2xl" mb="1">
-                  {config.emoji}
-                </Text>
-                <Text
-                  fontSize="xs"
-                  fontWeight="bold"
-                  color={`${config.color}.700`}
-                  lineHeight="1.2"
-                  mb="0.5"
+        <Box mb="5">
+          <Text fontSize="sm" color="gray.700" mb="3" fontWeight="semibold">
+            徽章墙
+          </Text>
+          <HStack wrap="wrap" gap="3" align="stretch">
+            {badges.map((key) => {
+              const config = BADGE_CONFIG[key];
+              return (
+                <Box
+                  key={key}
+                  bg={config.bg}
+                  p="2.5"
+                  borderRadius="xl"
+                  borderWidth="1px"
+                  borderColor={config.border}
+                  transition="all 0.2s"
+                  minW="190px"
+                  _hover={{ transform: "translateY(-2px)", boxShadow: "md" }}
                 >
-                  {config.title}
-                </Text>
-                <Text
-                  fontSize="2xs"
-                  color={`${config.color}.600`}
-                  lineHeight="1.2"
-                >
-                  {config.desc}
-                </Text>
-              </Box>
-            );
-          })}
-        </Grid>
+                  <HStack gap="3">
+                    <Box
+                      w="34px"
+                      h="34px"
+                      borderRadius="full"
+                      bg={config.ring}
+                      color="white"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      fontSize="2xs"
+                      fontWeight="bold"
+                      letterSpacing="0.2px"
+                      boxShadow="inset 0 0 0 2px rgba(255,255,255,0.32)"
+                      flexShrink={0}
+                    >
+                      {config.mark}
+                    </Box>
+                    <Stack gap="0">
+                      <Text fontSize="xs" fontWeight="bold" lineHeight="1.2">
+                        {config.title}
+                      </Text>
+                      <Text fontSize="2xs" color="gray.600" lineHeight="1.2">
+                        {config.desc}
+                      </Text>
+                    </Stack>
+                  </HStack>
+                </Box>
+              );
+            })}
+          </HStack>
+        </Box>
       )}
 
       {topRows.length === 0 ? (
