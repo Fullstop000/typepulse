@@ -17,6 +17,7 @@ mod context;
 mod events;
 mod io;
 mod listener;
+mod modifier;
 mod shortcut;
 mod state_api;
 
@@ -25,6 +26,9 @@ use self::events::{
     apply_collector_event, on_non_modifier_key_down, on_non_modifier_key_up,
     reset_active_typing_state,
 };
+use self::modifier::ModifierSnapshot;
+#[cfg(not(target_os = "macos"))]
+use self::modifier::ModifierState;
 
 pub use self::context::{bundle_id_from_app_path, running_apps, RunningAppInfo};
 #[cfg(test)]
@@ -38,7 +42,7 @@ use self::listener::on_key_event_non_macos;
 pub use self::shortcut::snapshot_shortcut_rows_by_range;
 use self::shortcut::{
     build_stored_input_analytics, flush_expired_open_chunk, rebuild_shortcut_usage_from_chunks,
-    snapshot_shortcut_rows,
+    snapshot_shortcut_rows, InputEventChunk, OpenInputEventChunk,
 };
 pub use self::state_api::{
     add_excluded_bundle_id, clear_stats, remove_excluded_bundle_id, set_excluded_bundle_ids,
@@ -108,23 +112,6 @@ pub(crate) struct ShortcutUsageValue {
     pub(crate) by_app: HashMap<String, u64>,
 }
 
-/// Persistable input chunk that stores compact event strings `dt,t,k,m`.
-#[derive(Clone)]
-struct InputEventChunk {
-    v: u8,
-    chunk_start_ms: i64,
-    app_ref: u32,
-    events: Vec<String>,
-}
-
-/// Open chunk that still accepts incoming events before it is rotated/flushed.
-#[derive(Clone)]
-struct OpenInputEventChunk {
-    chunk_start_ms: i64,
-    app_ref: u32,
-    events: Vec<String>,
-}
-
 pub struct CollectorState {
     // 统计聚合的明细数据（按时间/应用/窗口维度）
     stats: HashMap<StatsKey, StatsValue>,
@@ -192,102 +179,6 @@ pub struct CollectorState {
     storage: Box<dyn DetailStorage>,
     #[cfg(not(target_os = "macos"))]
     modifier_state: ModifierState,
-}
-
-#[cfg(not(target_os = "macos"))]
-#[derive(Default)]
-struct ModifierState {
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    meta: bool,
-    function: bool,
-}
-
-#[cfg(not(target_os = "macos"))]
-impl ModifierState {
-    fn has_any_modifier(&self) -> bool {
-        self.ctrl || self.alt || self.shift || self.meta || self.function
-    }
-
-    fn is_modifier_key(key: rdev::Key) -> bool {
-        matches!(
-            key,
-            rdev::Key::ControlLeft
-                | rdev::Key::ControlRight
-                | rdev::Key::Alt
-                | rdev::Key::AltGr
-                | rdev::Key::ShiftLeft
-                | rdev::Key::ShiftRight
-                | rdev::Key::MetaLeft
-                | rdev::Key::MetaRight
-                | rdev::Key::Function
-        )
-    }
-
-    fn update(&mut self, key: rdev::Key, pressed: bool) {
-        match key {
-            rdev::Key::ControlLeft | rdev::Key::ControlRight => self.ctrl = pressed,
-            rdev::Key::Alt | rdev::Key::AltGr => self.alt = pressed,
-            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => self.shift = pressed,
-            rdev::Key::MetaLeft | rdev::Key::MetaRight => self.meta = pressed,
-            rdev::Key::Function => self.function = pressed,
-            _ => {}
-        }
-    }
-
-    fn snapshot(&self) -> ModifierSnapshot {
-        ModifierSnapshot {
-            ctrl: self.ctrl,
-            opt: self.alt,
-            shift: self.shift,
-            cmd: self.meta,
-            function: self.function,
-        }
-    }
-}
-
-/// Modifier snapshot used by shortcut normalization and event serialization.
-#[derive(Clone, Copy, Default)]
-struct ModifierSnapshot {
-    ctrl: bool,
-    opt: bool,
-    shift: bool,
-    cmd: bool,
-    function: bool,
-}
-
-impl ModifierSnapshot {
-    fn has_any(&self) -> bool {
-        self.ctrl || self.opt || self.shift || self.cmd || self.function
-    }
-
-    fn has_shortcut_modifier(&self) -> bool {
-        self.ctrl || self.cmd
-    }
-
-    fn bitmask(&self) -> u8 {
-        (self.ctrl as u8)
-            | ((self.opt as u8) << 1)
-            | ((self.shift as u8) << 2)
-            | ((self.cmd as u8) << 3)
-            | ((self.function as u8) << 4)
-    }
-
-    // Rebuild modifier snapshot from persisted bitmask in compact input events.
-    fn from_bitmask(mask: u8) -> Self {
-        Self {
-            ctrl: (mask & 0b00001) != 0,
-            opt: (mask & 0b00010) != 0,
-            shift: (mask & 0b00100) != 0,
-            cmd: (mask & 0b01000) != 0,
-            function: (mask & 0b10000) != 0,
-        }
-    }
-
-    fn modifier_count(&self) -> u8 {
-        self.ctrl as u8 + self.opt as u8 + self.shift as u8 + self.cmd as u8 + self.function as u8
-    }
 }
 
 pub fn new_collector_state(
@@ -431,7 +322,7 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
             let now = Instant::now();
             let elapsed = now.duration_since(locked.last_tick_instant);
             locked.last_tick_instant = now;
-            flush_expired_open_chunk(&mut locked, current_ts_ms());
+            flush_expired_open_chunk(&mut locked, chrono::Utc::now().timestamp_millis());
             apply_collector_event(
                 &mut locked,
                 CollectorEvent::Tick {
@@ -451,10 +342,6 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
             }
         }
     });
-}
-
-fn current_ts_ms() -> i64 {
-    chrono::Utc::now().timestamp_millis()
 }
 
 #[cfg(test)]

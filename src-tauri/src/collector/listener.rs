@@ -3,9 +3,10 @@
 
 use std::sync::{Arc, Mutex};
 
+use super::modifier::ModifierSnapshot;
 #[cfg(not(target_os = "macos"))]
-use super::ModifierState;
-use super::{on_non_modifier_key_down, on_non_modifier_key_up, CollectorState, ModifierSnapshot};
+use super::modifier::ModifierState;
+use super::{on_non_modifier_key_down, on_non_modifier_key_up, CollectorState};
 
 #[cfg(not(target_os = "macos"))]
 fn normalize_non_macos_key(key: rdev::Key) -> Option<String> {

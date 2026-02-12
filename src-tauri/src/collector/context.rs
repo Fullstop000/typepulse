@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use super::{CollectorState, ModifierSnapshot};
+use super::modifier::ModifierSnapshot;
+use super::CollectorState;
 use std::time::{Duration, Instant};
 
 /// Running app info payload for exclusion management UI.

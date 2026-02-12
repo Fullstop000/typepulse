@@ -8,13 +8,30 @@ use chrono::{Duration as ChronoDuration, Local, TimeZone};
 use crate::storage::{StoredInputAnalytics, StoredInputEventChunk, StoredShortcutUsage};
 
 use super::{
-    current_ts_ms, CaptureContext, CollectorState, InputEventChunk, ModifierSnapshot,
-    OpenInputEventChunk, ShortcutAppUsageRow, ShortcutStatRow, ShortcutUsageValue,
+    CaptureContext, CollectorState, ModifierSnapshot, ShortcutAppUsageRow, ShortcutStatRow,
+    ShortcutUsageValue,
 };
 
 const INPUT_CHUNK_WINDOW_MS: i64 = 5_000;
 const INPUT_CHUNK_MAX_EVENTS: usize = 500;
 const INPUT_CHUNK_MAX_STORED: usize = 20_000;
+
+/// Persistable input chunk that stores compact event strings `dt,t,k,m`.
+#[derive(Clone)]
+pub(super) struct InputEventChunk {
+    pub(super) v: u8,
+    pub(super) chunk_start_ms: i64,
+    pub(super) app_ref: u32,
+    pub(super) events: Vec<String>,
+}
+
+/// Open chunk that still accepts incoming events before it is rotated/flushed.
+#[derive(Clone)]
+pub(super) struct OpenInputEventChunk {
+    pub(super) chunk_start_ms: i64,
+    pub(super) app_ref: u32,
+    pub(super) events: Vec<String>,
+}
 
 // Build canonical shortcut id with deterministic modifier order:
 // ctrl -> opt -> shift -> cmd -> key.
@@ -387,7 +404,7 @@ pub fn snapshot_shortcut_rows_by_range(
     state: &CollectorState,
     range: &str,
 ) -> Vec<ShortcutStatRow> {
-    let now_ms = current_ts_ms();
+    let now_ms = chrono::Utc::now().timestamp_millis();
     let (start_ms, end_ms) = shortcut_range_window_ms(range, now_ms);
     snapshot_shortcut_rows_in_window(state, start_ms, end_ms)
 }

@@ -9,10 +9,12 @@ use std::{
 use chrono::Local;
 
 use super::context::{auto_pause_reason, is_auto_paused};
+#[cfg(not(target_os = "macos"))]
+use super::modifier::ModifierState;
 use super::shortcut::{append_input_event, update_shortcut_usage};
 use super::{
-    capture_context, current_ts_ms, CaptureContext, CollectorEvent, CollectorState,
-    ModifierSnapshot, StatsKey, StatsValue,
+    capture_context, CaptureContext, CollectorEvent, CollectorState, ModifierSnapshot, StatsKey,
+    StatsValue,
 };
 
 // Reset runtime key states when capture is paused to avoid stale key-down state.
@@ -21,7 +23,7 @@ pub(super) fn reset_active_typing_state(state: &mut CollectorState) {
     state.active_stats_key = None;
     #[cfg(not(target_os = "macos"))]
     {
-        state.modifier_state = super::ModifierState::default();
+        state.modifier_state = ModifierState::default();
     }
 }
 
@@ -69,7 +71,7 @@ fn apply_non_modifier_key_down(
         'd',
         &shortcut_key,
         modifiers,
-        current_ts_ms(),
+        chrono::Utc::now().timestamp_millis(),
     );
     update_shortcut_usage(state, &capture_context, &shortcut_key, modifiers);
     let key = stats_key_from_context(&capture_context);
@@ -102,7 +104,7 @@ fn apply_non_modifier_key_up(
         'u',
         shortcut_key,
         modifiers,
-        current_ts_ms(),
+        chrono::Utc::now().timestamp_millis(),
     );
     state.pressed_non_modifier_keys.remove(physical_key_id);
     if state.pressed_non_modifier_keys.is_empty() {
