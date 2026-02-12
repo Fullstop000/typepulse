@@ -1,37 +1,44 @@
-import { Box, HStack, Text } from "@chakra-ui/react";
-import { ChangeEvent } from "react";
+import { Box, Button, ButtonGroup, HStack, Text } from "@chakra-ui/react";
 import { MenuBarDisplayMode } from "../../types";
 import { useSettingsContext } from "./SettingsContext";
 
 function DisplaySettingsSection() {
   const { snapshot, updateTrayDisplayMode } = useSettingsContext();
-  const handleModeChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    updateTrayDisplayMode(event.target.value as MenuBarDisplayMode);
-  };
+  const handleModeChange = (mode: MenuBarDisplayMode) => updateTrayDisplayMode(mode);
 
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
-      <Text fontSize="xl" fontWeight="semibold" mb="4">展示设置</Text>
-      <HStack justify="space-between" align="start" gap="4" flexWrap="wrap">
-        <Box>
-          <Text fontWeight="semibold">菜单栏显示模式</Text>
-          <Text fontSize="sm" color="gray.600">控制菜单栏小组件展示为图标、数字或图标+数字。</Text>
+    <Box bg="#f5f5f6" borderRadius="12px" borderWidth="1px" borderColor="#dddddf" p="0" overflow="hidden">
+      <Box px="5" py="4" borderBottomWidth="1px" borderColor="#e4e4e7">
+        <Text fontSize="lg" fontWeight="semibold" color="#111827">Appearance</Text>
+      </Box>
+      <HStack justify="space-between" align="center" gap="4" px="5" py="4" flexWrap="wrap">
+        <Box maxW="520px">
+          <Text fontWeight="medium" color="#111827" mb="1">菜单栏显示模式</Text>
+          <Text fontSize="sm" color="#6b7280">控制菜单栏小组件展示为图标、数字或图标+数字。</Text>
         </Box>
-        <select
-          value={snapshot.tray_display_mode}
-          onChange={handleModeChange}
-          style={{
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            padding: "8px 12px",
-            minWidth: "140px",
-            background: "white",
-          }}
-        >
-          <option value="icon_only">仅图标</option>
-          <option value="text_only">仅数字</option>
-          <option value="icon_text">图标 + 数字</option>
-        </select>
+        <ButtonGroup size="sm" variant="outline" attached>
+          <Button
+            borderColor="#d5d7dc"
+            bg={snapshot.tray_display_mode === "icon_only" ? "#ffffff" : "#ebebee"}
+            onClick={() => handleModeChange("icon_only")}
+          >
+            仅图标
+          </Button>
+          <Button
+            borderColor="#d5d7dc"
+            bg={snapshot.tray_display_mode === "text_only" ? "#ffffff" : "#ebebee"}
+            onClick={() => handleModeChange("text_only")}
+          >
+            仅数字
+          </Button>
+          <Button
+            borderColor="#d5d7dc"
+            bg={snapshot.tray_display_mode === "icon_text" ? "#ffffff" : "#ebebee"}
+            onClick={() => handleModeChange("icon_text")}
+          >
+            图标 + 数字
+          </Button>
+        </ButtonGroup>
       </HStack>
     </Box>
   );

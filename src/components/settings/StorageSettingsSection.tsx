@@ -37,13 +37,26 @@ function StorageSettingsSection() {
   }, []);
 
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
-      <Text fontSize="xl" fontWeight="semibold" mb="2">数据存储</Text>
-      <Text fontSize="sm" color="gray.600" mb="1">数据与日志保存在本机应用数据目录。</Text>
-      {dataSize !== null ? (
-        <Text fontSize="sm" color="gray.600" mb="4">已用空间：{formatBytes(dataSize)}</Text>
-      ) : null}
-      <Button onClick={handleOpenDataDir}>前往数据目录</Button>
+    <Box bg="#f5f5f6" borderRadius="12px" borderWidth="1px" borderColor="#dddddf" p="0" overflow="hidden">
+      <Box px="5" py="4" borderBottomWidth="1px" borderColor="#e4e4e7">
+        <Text fontSize="lg" fontWeight="semibold" color="#111827">Storage</Text>
+      </Box>
+      <Box px="5" py="4">
+        <Text fontSize="sm" color="#6b7280" mb="1">数据与日志保存在本机应用数据目录。</Text>
+        {dataSize !== null ? (
+          <Text fontSize="sm" color="#6b7280" mb="4">已用空间：{formatBytes(dataSize)}</Text>
+        ) : null}
+        <Button
+          onClick={handleOpenDataDir}
+          bg="#e7e7ea"
+          color="#1f2328"
+          borderWidth="1px"
+          borderColor="#d1d5db"
+          _hover={{ bg: "#dddddf" }}
+        >
+          前往数据目录
+        </Button>
+      </Box>
     </Box>
   );
 }

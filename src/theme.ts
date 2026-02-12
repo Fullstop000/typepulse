@@ -4,15 +4,15 @@ export const system = createSystem(defaultConfig, {
   theme: {
     tokens: {
       fonts: {
-        heading: { value: "Inter, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" },
-        body: { value: "Inter, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif" },
+        heading: { value: "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" },
+        body: { value: "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" },
       },
     },
   },
   globalCss: {
     body: {
-      bg: "#f8fafc",
-      color: "#0f172a",
+      bg: "#efeff1",
+      color: "#1f2328",
     },
   },
 });
