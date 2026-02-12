@@ -1,12 +1,11 @@
-import { GroupedRow, Snapshot, Totals, TrendGranularity, TrendSeries } from "../../types";
+import { GroupedRow, ShortcutStatRow, Totals, TrendGranularity, TrendSeries } from "../../types";
 import AppTable from "./AppTable";
 import FilterBar from "./FilterBar";
 import MetricsGrid from "./MetricsGrid";
-import StatusCard from "./StatusCard";
+import ShortcutUsagePanel from "./ShortcutUsagePanel";
 import TrendChart from "./TrendChart";
 
 type StatsPageProps = {
-  snapshot: Snapshot;
   filterRange: "today" | "yesterday" | "7d";
   onFilterChange: (value: "today" | "yesterday" | "7d") => void;
   totals: Totals;
@@ -14,10 +13,10 @@ type StatsPageProps = {
   trendSeries: TrendSeries;
   trendGranularity: TrendGranularity;
   onTrendGranularityChange: (value: TrendGranularity) => void;
+  shortcutRows: ShortcutStatRow[];
 };
 
 function StatsPage({
-  snapshot,
   filterRange,
   onFilterChange,
   totals,
@@ -25,10 +24,10 @@ function StatsPage({
   trendSeries,
   trendGranularity,
   onTrendGranularityChange,
+  shortcutRows,
 }: StatsPageProps) {
   return (
     <>
-      <StatusCard snapshot={snapshot} />
       <FilterBar filterRange={filterRange} onChange={onFilterChange} />
       <MetricsGrid totals={totals} />
       <TrendChart
@@ -36,6 +35,7 @@ function StatsPage({
         granularity={trendGranularity}
         onGranularityChange={onTrendGranularityChange}
       />
+      <ShortcutUsagePanel rows={shortcutRows} />
       <AppTable rows={groupedRows} />
     </>
   );

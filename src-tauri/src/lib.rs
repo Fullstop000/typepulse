@@ -87,8 +87,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             command::get_snapshot,
+            command::get_shortcut_stats_by_range,
             command::update_paused,
             command::update_ignore_key_combos,
+            command::update_shortcut_rules,
             command::get_running_apps,
             command::update_app_exclusion_list,
             command::add_app_exclusion,
@@ -228,6 +230,7 @@ fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> Sta
         tray_display_mode: MenuBarDisplayMode::default().as_str().to_string(),
         last_error: Some("state lock failed".to_string()),
         log_path: "".to_string(),
+        shortcut_stats: vec![],
     }
 }
 
