@@ -6,7 +6,6 @@ import PageHeader from "./components/layout/PageHeader";
 import SettingsPage from "./components/settings/page/SettingsPage";
 import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
-import { SettingSection } from "./components/settings/types";
 import { GroupedRow, ShortcutStatRow, Snapshot, Totals, TrendGranularity } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
@@ -15,8 +14,6 @@ type FilterRange = "today" | "yesterday" | "7d";
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">("stats");
-  const [activeSettingsSection, setActiveSettingsSection] =
-    useState<SettingSection>("capture");
   const [typingLogText, setTypingLogText] = useState("");
   const [appLogText, setAppLogText] = useState("");
   const [filterRange, setFilterRange] = useState<FilterRange>("today");
@@ -131,18 +128,34 @@ function App() {
     () => buildTrendSeries(snapshot?.rows ?? [], trendGranularity),
     [snapshot, trendGranularity],
   );
+  const isCollecting = snapshot ? !snapshot.paused && !snapshot.auto_paused : false;
+
+  // Toggle collector pause state from the global sidebar control.
+  const handleTogglePause = async () => {
+    if (!snapshot) {
+      return;
+    }
+    try {
+      const data = await invoke<Snapshot>("update_paused", {
+        paused: !snapshot.paused,
+      });
+      setSnapshot(data);
+    } catch (error) {
+      console.error("failed to toggle paused state", error);
+    }
+  };
 
   return (
-    <Flex minH="100vh" bg="#f8fafc">
+    <Flex minH="100vh" bg="#efeff1">
       <Sidebar
         activeTab={activeTab}
-        activeSettingsSection={activeSettingsSection}
         onChange={setActiveTab}
-        onSettingsSectionChange={setActiveSettingsSection}
+        isCollecting={isCollecting}
+        onTogglePause={handleTogglePause}
       />
-      <Box flex="1" overflowY="auto" px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
-        <Container maxW="1100px" px="0" display="flex" flexDirection="column" gap="5">
-          {snapshot ? <PageHeader title={pageTitle} /> : null}
+      <Box flex="1" overflowY="auto" px={{ base: 5, md: 10 }} py={{ base: 6, md: 8 }}>
+        <Container maxW={activeTab === "settings" ? "920px" : "1100px"} px="0" display="flex" flexDirection="column" gap="5">
+          {snapshot && activeTab !== "settings" ? <PageHeader title={pageTitle} /> : null}
           {!snapshot ? (
             <Box bg="white" borderRadius="16px" p="6" boxShadow="0 10px 30px rgba(15,23,42,0.08)">
               <Flex align="center" gap="2">
@@ -169,7 +182,10 @@ function App() {
               onRefreshApp={async () => setAppLogText(await invoke<string>("get_app_log_tail"))}
             />
           ) : (
-            <SettingsPage section={activeSettingsSection} snapshot={snapshot} onSnapshotChange={setSnapshot} />
+            <SettingsPage
+              snapshot={snapshot}
+              onSnapshotChange={setSnapshot}
+            />
           )}
         </Container>
       </Box>

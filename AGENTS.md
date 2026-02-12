@@ -84,8 +84,7 @@ This file defines repository-specific development rules for Codex agents.
 - Keep frontend/backend contract names aligned (invoke command names and payload fields).
 
 ## 7.1) Branch Workflow For New Features (Required)
-
-- When user explicitly asks to "add new feature" or "do refactor", always execute this Git workflow first:
+- When user explicitly asks to "实现新功能/feature" or "do refactor", always execute this Git workflow first:
   1. Checkout `main`.
   2. Pull latest `origin/main`.
   3. Checkout a new branch with `codex/` prefix.
