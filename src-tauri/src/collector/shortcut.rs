@@ -10,8 +10,11 @@ use crate::storage::{StoredInputAnalytics, StoredInputEventChunk, StoredShortcut
 use super::{
     current_ts_ms, CaptureContext, CollectorState, InputEventChunk, ModifierSnapshot,
     OpenInputEventChunk, ShortcutAppUsageRow, ShortcutStatRow, ShortcutUsageValue,
-    INPUT_CHUNK_MAX_EVENTS, INPUT_CHUNK_MAX_STORED, INPUT_CHUNK_WINDOW_MS,
 };
+
+const INPUT_CHUNK_WINDOW_MS: i64 = 5_000;
+const INPUT_CHUNK_MAX_EVENTS: usize = 500;
+const INPUT_CHUNK_MAX_STORED: usize = 20_000;
 
 // Build canonical shortcut id with deterministic modifier order:
 // ctrl -> opt -> shift -> cmd -> key.

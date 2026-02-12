@@ -46,10 +46,6 @@ pub use self::state_api::{
     set_paused, set_shortcut_rules, snapshot, snapshot_rows,
 };
 
-const INPUT_CHUNK_WINDOW_MS: i64 = 5_000;
-const INPUT_CHUNK_MAX_EVENTS: usize = 500;
-const INPUT_CHUNK_MAX_STORED: usize = 20_000;
-
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub(crate) struct StatsKey {
     pub(crate) date: String,
