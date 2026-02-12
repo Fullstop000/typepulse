@@ -15,12 +15,16 @@ function buildEfficiencyBadges(rows: ShortcutStatRow[]): string[] {
     (byId.get("ctrl_c") ?? 0) +
     (byId.get("ctrl_v") ?? 0);
   const undoCount = (byId.get("cmd_z") ?? 0) + (byId.get("ctrl_z") ?? 0);
+  const appSwitchCount = byId.get("cmd_tab") ?? 0;
   const badges: string[] = [];
   if (copyPaste >= 30) {
-    badges.push("搬运工 The Transporter");
+    badges.push("剪贴板永动机 Clipboard Alchemist");
   }
   if (undoCount >= 20) {
     badges.push("时光倒流 Time Traveler");
+  }
+  if (appSwitchCount >= 20) {
+    badges.push("窗口蹦迪王 Window DJ");
   }
   return badges;
 }

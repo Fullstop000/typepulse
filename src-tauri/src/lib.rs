@@ -6,7 +6,7 @@ use std::{
 
 use app_config::{load_app_config, AppConfig, MenuBarDisplayMode};
 use chrono::Local;
-use collector::{new_collector_state, set_paused, snapshot, start_collector, StatsSnapshot};
+use collector::{new_collector_state, start_collector, StatsSnapshot};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
@@ -88,6 +88,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             command::get_snapshot,
             command::get_shortcut_stats_by_range,
+            command::get_daily_top_keys_by_range,
             command::update_paused,
             command::update_ignore_key_combos,
             command::update_shortcut_rules,
@@ -150,8 +151,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
             }
             if event.id() == "toggle" {
                 if let Ok(mut locked) = app.state::<AppState>().inner.lock() {
-                    let paused_now = snapshot(&locked).paused;
-                    set_paused(&mut locked, !paused_now);
+                    let paused_now = locked.snapshot().paused;
+                    locked.set_paused(!paused_now);
                     let _ = collector::append_app_log(
                         &locked.app_log_path,
                         if paused_now {
@@ -216,7 +217,7 @@ fn start_tray_updater(
 
 fn get_snapshot_from_state(state: &Arc<Mutex<collector::CollectorState>>) -> StatsSnapshot {
     if let Ok(locked) = state.lock() {
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     StatsSnapshot {
         rows: vec![],

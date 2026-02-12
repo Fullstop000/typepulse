@@ -6,7 +6,14 @@ import PageHeader from "./components/layout/PageHeader";
 import SettingsPage from "./components/settings/page/SettingsPage";
 import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
-import { GroupedRow, ShortcutStatRow, Snapshot, Totals, TrendGranularity } from "./types";
+import {
+  DailyTopKeysRow,
+  GroupedRow,
+  ShortcutStatRow,
+  Snapshot,
+  Totals,
+  TrendGranularity,
+} from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 
 type FilterRange = "today" | "yesterday" | "7d";
@@ -19,22 +26,26 @@ function App() {
   const [filterRange, setFilterRange] = useState<FilterRange>("today");
   const [trendGranularity, setTrendGranularity] = useState<TrendGranularity>("5m");
   const [filteredShortcutStats, setFilteredShortcutStats] = useState<ShortcutStatRow[]>([]);
+  const [dailyTopKeysRows, setDailyTopKeysRows] = useState<DailyTopKeysRow[]>([]);
 
   useEffect(() => {
     let mounted = true;
     const fetchSnapshot = async () => {
       try {
-        const [data, shortcutRows] = await Promise.all([
+        const [data, shortcutRows, dailyRows] = await Promise.all([
           invoke<Snapshot>("get_snapshot"),
           invoke<ShortcutStatRow[]>("get_shortcut_stats_by_range", { range: filterRange }),
+          invoke<DailyTopKeysRow[]>("get_daily_top_keys_by_range", { range: filterRange }),
         ]);
         if (mounted) {
           setSnapshot(data);
           setFilteredShortcutStats(shortcutRows);
+          setDailyTopKeysRows(dailyRows);
         }
       } catch (error) {
         if (mounted) {
           setFilteredShortcutStats([]);
+          setDailyTopKeysRows([]);
         }
         console.error("failed to refresh snapshot", error);
       }
@@ -173,6 +184,7 @@ function App() {
               trendGranularity={trendGranularity}
               onTrendGranularityChange={setTrendGranularity}
               shortcutRows={filteredShortcutStats}
+              dailyTopKeysRows={dailyTopKeysRows}
             />
           ) : activeTab === "logs" ? (
             <LogsPage

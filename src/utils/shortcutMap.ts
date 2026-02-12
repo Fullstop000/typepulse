@@ -10,6 +10,7 @@ const shortcutActionMap: Record<string, string> = {
   cmd_f: "Find",
   cmd_b: "Build",
   cmd_p: "Command Palette",
+  cmd_tab: "App Switcher",
   ctrl_c: "Copy",
   ctrl_v: "Paste",
   ctrl_x: "Cut",
