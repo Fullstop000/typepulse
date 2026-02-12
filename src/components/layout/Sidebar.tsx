@@ -1,94 +1,136 @@
-import { Box, Button, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
-import { SettingSection } from "../settings/types";
+import { Box, Button, HStack, Stack, Switch, Text } from "@chakra-ui/react";
+import { ReactNode } from "react";
 
 type SidebarProps = {
   activeTab: "stats" | "logs" | "settings";
-  activeSettingsSection: SettingSection;
   onChange: (tab: "stats" | "logs" | "settings") => void;
-  onSettingsSectionChange: (section: SettingSection) => void;
+  isCollecting: boolean;
+  onTogglePause: () => void;
 };
+
+type IconProps = { color: string };
+
+function ChartIcon({ color }: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <path d="M4 19V5" />
+      <path d="M10 19v-8" />
+      <path d="M16 19v-4" />
+      <path d="M22 19V9" />
+    </svg>
+  );
+}
+
+function LogIcon({ color }: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <path d="M5 5h14v14H5z" />
+      <path d="M8 9h8" />
+      <path d="M8 13h8" />
+      <path d="M8 17h5" />
+    </svg>
+  );
+}
+
+function SettingsIcon({ color }: IconProps) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 1 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 1 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2h.1a1 1 0 0 0 .6-.9V4a2 2 0 1 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1v.1a1 1 0 0 0 .9.6H20a2 2 0 1 1 0 4h-.2a1 1 0 0 0-.9.6z" />
+    </svg>
+  );
+}
 
 function NavButton({
   active,
   label,
+  icon,
   onClick,
 }: {
   active: boolean;
   label: string;
+  icon: ReactNode;
   onClick: () => void;
 }) {
+  const fg = active ? "#1f2328" : "#4b5563";
   return (
     <Button
       justifyContent="flex-start"
-      variant={active ? "solid" : "ghost"}
-      colorPalette={active ? "blue" : "gray"}
+      variant="ghost"
+      bg={active ? "#d9d9dd" : "transparent"}
+      color={fg}
+      _hover={{ bg: active ? "#d9d9dd" : "#e6e6ea", color: "#1f2328" }}
+      fontWeight={active ? "semibold" : "medium"}
+      borderRadius="8px"
       onClick={onClick}
       w="full"
+      h="34px"
+      px="3"
+      fontSize="sm"
     >
-      {label}
+      <HStack gap="2">
+        <Box as="span" display="inline-flex" alignItems="center" justifyContent="center">
+          {icon}
+        </Box>
+        <Text>{label}</Text>
+      </HStack>
     </Button>
   );
 }
 
-function Sidebar({ activeTab, activeSettingsSection, onChange, onSettingsSectionChange }: SidebarProps) {
-  const [settingsExpanded, setSettingsExpanded] = useState(activeTab === "settings");
-
-  useEffect(() => {
-    if (activeTab !== "settings") setSettingsExpanded(false);
-  }, [activeTab]);
-
-  const openSettings = () => {
-    onChange("settings");
-    setSettingsExpanded(true);
-  };
-
-  const handleSectionClick = (section: SettingSection) => {
-    onChange("settings");
-    onSettingsSectionChange(section);
-    setSettingsExpanded(true);
-  };
-
+function Sidebar({ activeTab, onChange, isCollecting, onTogglePause }: SidebarProps) {
   return (
     <Box
       w={{ base: "220px", md: "240px" }}
-      bg="gray.100"
+      bg="#e8e8ec"
       borderRightWidth="1px"
-      borderColor="gray.200"
+      borderColor="#d9d9dd"
       p="4"
       minH="100vh"
       position="sticky"
       top="0"
       alignSelf="flex-start"
+      display="flex"
+      flexDirection="column"
     >
-      <Box bg="white" borderRadius="12px" p="3" mb="5">
-        <Text fontWeight="bold">TypePulse</Text>
-        <Text fontSize="xs" color="gray.600">Typing Analytics</Text>
+      <Box borderRadius="12px" p="2" mb="4">
+        <Text fontWeight="semibold" fontSize="sm" color="#4b5563">TypePulse</Text>
+        <Text fontSize="xs" color="#7b8390">Typing Analytics</Text>
       </Box>
-      <Stack gap="2">
-        <NavButton active={activeTab === "stats"} label="数据" onClick={() => onChange("stats")} />
-        <NavButton active={activeTab === "logs"} label="日志" onClick={() => onChange("logs")} />
-        <NavButton active={activeTab === "settings"} label="设置" onClick={openSettings} />
+      <Stack gap="1">
+        <NavButton active={activeTab === "stats"} label="数据" icon={<ChartIcon color={activeTab === "stats" ? "#1f2328" : "#6b7280"} />} onClick={() => onChange("stats")} />
+        <NavButton active={activeTab === "logs"} label="日志" icon={<LogIcon color={activeTab === "logs" ? "#1f2328" : "#6b7280"} />} onClick={() => onChange("logs")} />
+        <NavButton active={activeTab === "settings"} label="设置" icon={<SettingsIcon color={activeTab === "settings" ? "#1f2328" : "#6b7280"} />} onClick={() => onChange("settings")} />
       </Stack>
-      {settingsExpanded ? (
-        <Stack gap="2" mt="3" pl="3" borderLeftWidth="1px" borderColor="gray.300">
-          <NavButton
-            active={activeTab === "settings" && activeSettingsSection === "capture"}
-            label="采集控制"
-            onClick={() => handleSectionClick("capture")}
-          />
-          <NavButton
-            active={activeTab === "settings" && activeSettingsSection === "display"}
-            label="展示设置"
-            onClick={() => handleSectionClick("display")}
-          />
-          <NavButton
-            active={activeTab === "settings" && activeSettingsSection === "storage"}
-            label="数据存储"
-            onClick={() => handleSectionClick("storage")}
-          />
-        </Stack>
-      ) : null}
+      <Box mt="auto" pt="4">
+        <HStack
+          px="2"
+          py="2"
+          borderRadius="10px"
+          bg="#ededf0"
+          borderWidth="1px"
+          borderColor="#d9d9dd"
+          justify="space-between"
+        >
+          <HStack gap="1.5">
+            <Box
+              w="8px"
+              h="8px"
+              borderRadius="full"
+              bg={isCollecting ? "#22c55e" : "#facc15"}
+              borderWidth="1px"
+              borderColor={isCollecting ? "#16a34a" : "#eab308"}
+            />
+            <Text fontSize="xs" color="#6b7280">
+              {isCollecting ? "采集中" : "暂停采集"}
+            </Text>
+          </HStack>
+          <Switch.Root checked={isCollecting} onCheckedChange={onTogglePause}>
+            <Switch.HiddenInput />
+            <Switch.Control />
+          </Switch.Root>
+        </HStack>
+      </Box>
     </Box>
   );
 }

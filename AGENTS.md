@@ -74,6 +74,14 @@ This file defines repository-specific development rules for Codex agents.
   4. Validation/build checks.
 - Keep frontend/backend contract names aligned (invoke command names and payload fields).
 
+## 7.1) Branch Workflow For New Features (Required)
+- When user explicitly asks to "实现新功能" or "feature", always execute this Git workflow first:
+  1. Checkout `main`.
+  2. Pull latest `origin/main`.
+  3. Checkout a new branch with `codex/` prefix.
+- Before switching branch or implementing feature work, if local changes are present (staged or unstaged), stop and ask user to confirm how to handle them.
+- Do not carry unrelated residual changes into the new feature branch without user confirmation.
+
 ## 8) Commit Style
 - Follow conventional-style commits with scope when possible:
   - `feat(settings): ...`
