@@ -1,4 +1,4 @@
-import { Box, Button, ButtonGroup, Flex, Text } from "@chakra-ui/react";
+import { Button, HStack } from "@chakra-ui/react";
 
 type FilterBarProps = {
   filterRange: "today" | "yesterday" | "7d";
@@ -6,35 +6,39 @@ type FilterBarProps = {
 };
 
 function FilterBar({ filterRange, onChange }: FilterBarProps) {
+  const options = [
+    { value: "today", label: "今天" },
+    { value: "yesterday", label: "昨天" },
+    { value: "7d", label: "最近7天" },
+  ] as const;
+
   return (
-    <Box bg="white" borderRadius="16px" p="5" boxShadow="sm">
-      <Flex justify="space-between" align="center" gap="3" flexWrap="wrap">
-        <Text fontWeight="semibold">时间范围</Text>
-        <ButtonGroup size="sm" variant="outline" attached>
+    <HStack bg="gray.100" p="1" borderRadius="10px" gap="0">
+      {options.map((opt) => {
+        const isActive = filterRange === opt.value;
+        return (
           <Button
-            colorPalette={filterRange === "today" ? "blue" : "gray"}
-            variant={filterRange === "today" ? "solid" : "outline"}
-            onClick={() => onChange("today")}
+            key={opt.value}
+            variant="ghost"
+            size="sm"
+            bg={isActive ? "white" : "transparent"}
+            color={isActive ? "gray.900" : "gray.500"}
+            shadow={isActive ? "xs" : "none"}
+            borderRadius="8px"
+            fontWeight={isActive ? "semibold" : "medium"}
+            px="3"
+            h="8"
+            _hover={{
+              bg: isActive ? "white" : "gray.200",
+              color: isActive ? "gray.900" : "gray.700",
+            }}
+            onClick={() => onChange(opt.value)}
           >
-            今天
+            {opt.label}
           </Button>
-          <Button
-            colorPalette={filterRange === "yesterday" ? "blue" : "gray"}
-            variant={filterRange === "yesterday" ? "solid" : "outline"}
-            onClick={() => onChange("yesterday")}
-          >
-            昨天
-          </Button>
-          <Button
-            colorPalette={filterRange === "7d" ? "blue" : "gray"}
-            variant={filterRange === "7d" ? "solid" : "outline"}
-            onClick={() => onChange("7d")}
-          >
-            最近7天
-          </Button>
-        </ButtonGroup>
-      </Flex>
-    </Box>
+        );
+      })}
+    </HStack>
   );
 }
 
