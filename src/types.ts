@@ -62,3 +62,13 @@ export type ShortcutStatRow = {
   count: number;
   apps: ShortcutAppUsageRow[];
 };
+
+export type KeyUsageRow = {
+  key: string;
+  count: number;
+};
+
+export type DailyTopKeysRow = {
+  date: string;
+  keys: KeyUsageRow[];
+};

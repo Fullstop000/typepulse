@@ -8,8 +8,8 @@ use chrono::{Duration as ChronoDuration, Local, TimeZone};
 use crate::storage::{StoredInputAnalytics, StoredInputEventChunk, StoredShortcutUsage};
 
 use super::{
-    CaptureContext, CollectorState, ModifierSnapshot, ShortcutAppUsageRow, ShortcutStatRow,
-    ShortcutUsageValue,
+    CaptureContext, CollectorState, DailyTopKeysRow, KeyUsageRow, ModifierSnapshot,
+    ShortcutAppUsageRow, ShortcutStatRow, ShortcutUsageValue,
 };
 
 const INPUT_CHUNK_WINDOW_MS: i64 = 5_000;
@@ -407,4 +407,66 @@ pub fn snapshot_shortcut_rows_by_range(
     let now_ms = chrono::Utc::now().timestamp_millis();
     let (start_ms, end_ms) = shortcut_range_window_ms(range, now_ms);
     snapshot_shortcut_rows_in_window(state, start_ms, end_ms)
+}
+
+// Rebuild daily top-key rows from compact key-down events for a requested time window.
+fn snapshot_daily_top_keys_in_window(
+    state: &CollectorState,
+    start_ms: i64,
+    end_ms: i64,
+) -> Vec<DailyTopKeysRow> {
+    let mut by_day: HashMap<String, HashMap<String, u64>> = HashMap::new();
+    let mut consume_chunk = |chunk_start_ms: i64, events: &[String]| {
+        for raw_event in events {
+            let Some((dt, event_type, key, _modifiers)) = parse_compact_event(raw_event) else {
+                continue;
+            };
+            if event_type != 'd' {
+                continue;
+            }
+            let event_ms = chunk_start_ms.saturating_add(dt.max(0));
+            if event_ms < start_ms || event_ms >= end_ms {
+                continue;
+            }
+            let day = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(event_ms)
+                .map(|v| v.with_timezone(&Local).format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let day_counts = by_day.entry(day).or_default();
+            *day_counts.entry(key).or_insert(0) += 1;
+        }
+    };
+
+    for chunk in &state.event_chunks {
+        consume_chunk(chunk.chunk_start_ms, &chunk.events);
+    }
+    if let Some(open_chunk) = state.open_event_chunk.as_ref() {
+        consume_chunk(open_chunk.chunk_start_ms, &open_chunk.events);
+    }
+
+    let mut rows: Vec<DailyTopKeysRow> = by_day
+        .into_iter()
+        .map(|(date, key_counts)| {
+            let mut keys: Vec<KeyUsageRow> = key_counts
+                .into_iter()
+                .map(|(key, count)| KeyUsageRow { key, count })
+                .collect();
+            keys.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
+            DailyTopKeysRow {
+                date,
+                keys: keys.into_iter().take(5).collect(),
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| b.date.cmp(&a.date));
+    rows
+}
+
+/// Build daily top-key rows by selected range: `today` / `yesterday` / `7d`.
+pub fn snapshot_daily_top_keys_by_range(
+    state: &CollectorState,
+    range: &str,
+) -> Vec<DailyTopKeysRow> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let (start_ms, end_ms) = shortcut_range_window_ms(range, now_ms);
+    snapshot_daily_top_keys_in_window(state, start_ms, end_ms)
 }

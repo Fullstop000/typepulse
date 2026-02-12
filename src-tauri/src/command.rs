@@ -7,11 +7,9 @@ use crate::{
     app_config::{save_app_config, MenuBarDisplayMode},
     apply_menu_bar_mode_immediately,
     collector::{
-        self, add_excluded_bundle_id, bundle_id_from_app_path, clear_stats,
-        remove_excluded_bundle_id, running_apps, set_excluded_bundle_ids, set_ignore_key_combos,
-        set_menu_bar_display_mode, set_one_password_suggestion_pending, set_paused,
-        set_shortcut_rules, snapshot, snapshot_shortcut_rows_by_range, RunningAppInfo,
-        ShortcutStatRow, StatsSnapshot,
+        self, bundle_id_from_app_path, running_apps, snapshot_daily_top_keys_by_range,
+        snapshot_shortcut_rows_by_range, DailyTopKeysRow, RunningAppInfo, ShortcutStatRow,
+        StatsSnapshot,
     },
     AppState,
 };
@@ -20,7 +18,7 @@ use crate::{
 #[tauri::command]
 pub(crate) fn get_snapshot(state: State<AppState>) -> StatsSnapshot {
     if let Ok(locked) = state.inner.lock() {
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     StatsSnapshot {
         rows: vec![],
@@ -50,11 +48,23 @@ pub(crate) fn get_shortcut_stats_by_range(
     vec![]
 }
 
+/// 按时间范围返回每日按键 Top 5（today / yesterday / 7d）。
+#[tauri::command]
+pub(crate) fn get_daily_top_keys_by_range(
+    state: State<AppState>,
+    range: String,
+) -> Vec<DailyTopKeysRow> {
+    if let Ok(locked) = state.inner.lock() {
+        return snapshot_daily_top_keys_by_range(&locked, &range);
+    }
+    vec![]
+}
+
 /// 更新采集暂停状态，并返回最新快照。
 #[tauri::command]
 pub(crate) fn update_paused(state: State<AppState>, paused: bool) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        set_paused(&mut locked, paused);
+        locked.set_paused(paused);
         let _ = collector::append_app_log(
             &locked.app_log_path,
             if paused {
@@ -63,7 +73,7 @@ pub(crate) fn update_paused(state: State<AppState>, paused: bool) -> StatsSnapsh
                 "resumed via command"
             },
         );
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -75,7 +85,7 @@ pub(crate) fn update_ignore_key_combos(
     ignore_key_combos: bool,
 ) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        set_ignore_key_combos(&mut locked, ignore_key_combos);
+        locked.set_ignore_key_combos(ignore_key_combos);
         if let Ok(mut config) = state.config.lock() {
             config.ignore_key_combos = ignore_key_combos;
             let _ = save_app_config(&state.config_path, &config);
@@ -88,7 +98,7 @@ pub(crate) fn update_ignore_key_combos(
                 "ignore key combos disabled"
             },
         );
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -104,8 +114,7 @@ pub(crate) fn update_shortcut_rules(
     blocklist: Vec<String>,
 ) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        set_shortcut_rules(
-            &mut locked,
+        locked.set_shortcut_rules(
             require_cmd_or_ctrl,
             allow_alt_only,
             min_modifiers,
@@ -133,7 +142,7 @@ pub(crate) fn update_shortcut_rules(
             let _ = save_app_config(&state.config_path, &config);
         }
         let _ = collector::append_app_log(&locked.app_log_path, "shortcut rules updated");
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -149,7 +158,7 @@ pub(crate) fn update_app_exclusion_list(
     bundle_ids: Vec<String>,
 ) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        set_excluded_bundle_ids(&mut locked, &bundle_ids);
+        locked.set_excluded_bundle_ids(&bundle_ids);
         if let Ok(mut config) = state.config.lock() {
             config.excluded_bundle_ids = bundle_ids
                 .iter()
@@ -159,7 +168,7 @@ pub(crate) fn update_app_exclusion_list(
             let _ = save_app_config(&state.config_path, &config);
         }
         let _ = collector::append_app_log(&locked.app_log_path, "app exclusion list updated");
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -167,7 +176,7 @@ pub(crate) fn update_app_exclusion_list(
 #[tauri::command]
 pub(crate) fn add_app_exclusion(state: State<AppState>, bundle_id: String) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        let added = add_excluded_bundle_id(&mut locked, &bundle_id);
+        let added = locked.add_excluded_bundle_id(&bundle_id);
         if added {
             if let Ok(mut config) = state.config.lock() {
                 let normalized = bundle_id.trim().to_ascii_lowercase();
@@ -187,7 +196,7 @@ pub(crate) fn add_app_exclusion(state: State<AppState>, bundle_id: String) -> St
                 &format!("bundle id added to exclusion list: {}", bundle_id),
             );
         }
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -195,7 +204,7 @@ pub(crate) fn add_app_exclusion(state: State<AppState>, bundle_id: String) -> St
 #[tauri::command]
 pub(crate) fn remove_app_exclusion(state: State<AppState>, bundle_id: String) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        let removed = remove_excluded_bundle_id(&mut locked, &bundle_id);
+        let removed = locked.remove_excluded_bundle_id(&bundle_id);
         if removed {
             if let Ok(mut config) = state.config.lock() {
                 config
@@ -208,7 +217,7 @@ pub(crate) fn remove_app_exclusion(state: State<AppState>, bundle_id: String) ->
                 &format!("bundle id removed from exclusion list: {}", bundle_id),
             );
         }
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -221,12 +230,12 @@ pub(crate) fn resolve_bundle_id_from_app_path(path: String) -> Option<String> {
 #[tauri::command]
 pub(crate) fn dismiss_one_password_suggestion(state: State<AppState>) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        set_one_password_suggestion_pending(&mut locked, false);
+        locked.set_one_password_suggestion_pending(false);
         if let Ok(mut config) = state.config.lock() {
             config.one_password_suggestion_handled = true;
             let _ = save_app_config(&state.config_path, &config);
         }
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -234,8 +243,8 @@ pub(crate) fn dismiss_one_password_suggestion(state: State<AppState>) -> StatsSn
 #[tauri::command]
 pub(crate) fn accept_one_password_suggestion(state: State<AppState>) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        let _ = add_excluded_bundle_id(&mut locked, "com.1password.1password");
-        set_one_password_suggestion_pending(&mut locked, false);
+        let _ = locked.add_excluded_bundle_id("com.1password.1password");
+        locked.set_one_password_suggestion_pending(false);
         if let Ok(mut config) = state.config.lock() {
             if !config
                 .excluded_bundle_ids
@@ -255,7 +264,7 @@ pub(crate) fn accept_one_password_suggestion(state: State<AppState>) -> StatsSna
             &locked.app_log_path,
             "1Password added to exclusion list via suggestion",
         );
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }
@@ -272,7 +281,7 @@ pub(crate) fn update_menu_bar_display_mode(
         None => return get_snapshot(state),
     };
     if let Ok(mut locked) = state.inner.lock() {
-        set_menu_bar_display_mode(&mut locked, mode);
+        locked.set_menu_bar_display_mode(mode);
         if let Ok(mut config) = state.config.lock() {
             config.menu_bar_display_mode = mode;
             let _ = save_app_config(&state.config_path, &config);
@@ -281,7 +290,7 @@ pub(crate) fn update_menu_bar_display_mode(
             &locked.app_log_path,
             &format!("menu bar display mode changed: {}", mode.as_str()),
         );
-        let snapshot = snapshot(&locked);
+        let snapshot = locked.snapshot();
         apply_menu_bar_mode_immediately(&app, &snapshot);
         return snapshot;
     }
@@ -292,9 +301,9 @@ pub(crate) fn update_menu_bar_display_mode(
 #[tauri::command]
 pub(crate) fn reset_stats(state: State<AppState>) -> StatsSnapshot {
     if let Ok(mut locked) = state.inner.lock() {
-        clear_stats(&mut locked);
+        locked.clear_stats();
         let _ = collector::append_app_log(&locked.app_log_path, "stats reset");
-        return snapshot(&locked);
+        return locked.snapshot();
     }
     get_snapshot(state)
 }

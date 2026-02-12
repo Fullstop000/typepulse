@@ -39,16 +39,11 @@ use self::io::write_csv;
 use self::listener::listen_keypress_macos;
 #[cfg(not(target_os = "macos"))]
 use self::listener::on_key_event_non_macos;
-pub use self::shortcut::snapshot_shortcut_rows_by_range;
 use self::shortcut::{
     build_stored_input_analytics, flush_expired_open_chunk, rebuild_shortcut_usage_from_chunks,
     snapshot_shortcut_rows, InputEventChunk, OpenInputEventChunk,
 };
-pub use self::state_api::{
-    add_excluded_bundle_id, clear_stats, remove_excluded_bundle_id, set_excluded_bundle_ids,
-    set_ignore_key_combos, set_menu_bar_display_mode, set_one_password_suggestion_pending,
-    set_paused, set_shortcut_rules, snapshot, snapshot_rows,
-};
+pub use self::shortcut::{snapshot_daily_top_keys_by_range, snapshot_shortcut_rows_by_range};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub(crate) struct StatsKey {
@@ -87,6 +82,20 @@ pub struct ShortcutStatRow {
     pub shortcut_id: String,
     pub count: u64,
     pub apps: Vec<ShortcutAppUsageRow>,
+}
+
+/// Per-key usage count row used by daily top-key ranking payload.
+#[derive(Serialize, Clone)]
+pub struct KeyUsageRow {
+    pub key: String,
+    pub count: u64,
+}
+
+/// Daily top-key summary payload grouped by local date.
+#[derive(Serialize, Clone)]
+pub struct DailyTopKeysRow {
+    pub date: String,
+    pub keys: Vec<KeyUsageRow>,
 }
 
 #[derive(Serialize, Clone)]
@@ -336,7 +345,7 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
                 let _ = locked.storage.save_stats(&locked.stats);
                 let analytics = build_stored_input_analytics(&mut locked);
                 let _ = locked.storage.save_input_analytics(&analytics);
-                if let Ok(rows) = snapshot_rows(&locked) {
+                if let Ok(rows) = locked.snapshot_rows() {
                     let _ = write_csv(&locked.log_path, &rows);
                 }
             }
@@ -347,9 +356,8 @@ pub fn start_collector(state: Arc<Mutex<CollectorState>>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_collector_event, set_ignore_key_combos, should_ignore_keypress, snapshot,
-        snapshot_rows, CaptureContext, CollectorEvent, CollectorState, ModifierSnapshot, StatsKey,
-        StatsValue,
+        apply_collector_event, should_ignore_keypress, CaptureContext, CollectorEvent,
+        CollectorState, ModifierSnapshot, StatsKey, StatsValue,
     };
     use crate::app_config::MenuBarDisplayMode;
     use crate::storage::JsonFileStorage;
@@ -471,7 +479,7 @@ mod tests {
         }
 
         fn rows(&self) -> Vec<super::StatsRow> {
-            snapshot_rows(&self.state).unwrap()
+            self.state.snapshot_rows().unwrap()
         }
     }
 
@@ -503,7 +511,7 @@ mod tests {
             },
         );
         let state = build_state(stats);
-        let rows = snapshot_rows(&state).unwrap();
+        let rows = state.snapshot_rows().unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].date, "2026-02-09 10:00");
         assert_eq!(rows[0].app_name, "A");
@@ -523,11 +531,11 @@ mod tests {
     fn set_ignore_key_combos_reflects_in_snapshot() {
         let state = build_state(HashMap::new());
         let mut state = state;
-        assert!(!snapshot(&state).ignore_key_combos);
-        set_ignore_key_combos(&mut state, true);
-        assert!(snapshot(&state).ignore_key_combos);
-        set_ignore_key_combos(&mut state, false);
-        assert!(!snapshot(&state).ignore_key_combos);
+        assert!(!state.snapshot().ignore_key_combos);
+        state.set_ignore_key_combos(true);
+        assert!(state.snapshot().ignore_key_combos);
+        state.set_ignore_key_combos(false);
+        assert!(!state.snapshot().ignore_key_combos);
     }
 
     #[test]
@@ -621,7 +629,7 @@ mod tests {
     fn ignore_key_combo_event_is_not_counted_in_event_stream() {
         let mut harness = CollectorEventHarness::new();
         let now = Instant::now();
-        set_ignore_key_combos(&mut harness.state, true);
+        harness.state.set_ignore_key_combos(true);
 
         harness.key_down("k:a", true, now);
         harness.tick(Duration::from_millis(300), now + Duration::from_millis(300));
@@ -632,5 +640,30 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].key_count, 1);
         assert_eq!(rows[0].active_typing_ms, 200);
+    }
+
+    #[test]
+    fn daily_top_keys_counts_key_down_only_and_sorts() {
+        let mut state = build_state(HashMap::new());
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        state.event_chunks.push(super::shortcut::InputEventChunk {
+            v: 1,
+            chunk_start_ms: now_ms,
+            app_ref: 1,
+            events: vec![
+                "0,d,a,0".to_string(),
+                "50,d,a,0".to_string(),
+                "100,d,tab,0".to_string(),
+                "150,u,a,0".to_string(),
+            ],
+        });
+
+        let rows = super::snapshot_daily_top_keys_by_range(&state, "today");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].keys.len(), 2);
+        assert_eq!(rows[0].keys[0].key, "a");
+        assert_eq!(rows[0].keys[0].count, 2);
+        assert_eq!(rows[0].keys[1].key, "tab");
+        assert_eq!(rows[0].keys[1].count, 1);
     }
 }

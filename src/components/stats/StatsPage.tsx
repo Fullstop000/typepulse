@@ -1,5 +1,13 @@
-import { GroupedRow, ShortcutStatRow, Totals, TrendGranularity, TrendSeries } from "../../types";
+import {
+  DailyTopKeysRow,
+  GroupedRow,
+  ShortcutStatRow,
+  Totals,
+  TrendGranularity,
+  TrendSeries,
+} from "../../types";
 import AppTable from "./AppTable";
+import DailyTopKeysPanel from "./DailyTopKeysPanel";
 import FilterBar from "./FilterBar";
 import MetricsGrid from "./MetricsGrid";
 import ShortcutUsagePanel from "./ShortcutUsagePanel";
@@ -14,6 +22,7 @@ type StatsPageProps = {
   trendGranularity: TrendGranularity;
   onTrendGranularityChange: (value: TrendGranularity) => void;
   shortcutRows: ShortcutStatRow[];
+  dailyTopKeysRows: DailyTopKeysRow[];
 };
 
 function StatsPage({
@@ -25,11 +34,13 @@ function StatsPage({
   trendGranularity,
   onTrendGranularityChange,
   shortcutRows,
+  dailyTopKeysRows,
 }: StatsPageProps) {
   return (
     <>
       <FilterBar filterRange={filterRange} onChange={onFilterChange} />
       <MetricsGrid totals={totals} />
+      <DailyTopKeysPanel rows={dailyTopKeysRows} />
       <TrendChart
         series={trendSeries}
         granularity={trendGranularity}

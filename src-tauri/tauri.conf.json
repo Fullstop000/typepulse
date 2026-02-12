@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "TypePulse",
-        "width": 960,
-        "height": 600
+        "width": 1280,
+        "height": 800
       }
     ],
     "security": {

@@ -60,8 +60,11 @@ function buildFunFacts(totals: Totals) {
     `如果每次按键能产生 0.005J 的能量，你产生的总能量可以把一部手机抬高 ${(totals.keys * 0.005 / 0.15 / 9.8).toFixed(1)} 米。`,
   ];
 
-  const timeIndex = Math.abs(activeMinutes + totals.sessions) % timeFactCandidates.length;
-  const keyIndex = Math.abs(totals.keys + totals.sessions * 3) % keyFactCandidates.length;
+  // Rotate facts by coarse buckets to avoid changing on every single keystroke.
+  const timeBucket = Math.floor(activeMinutes / 5) + Math.floor(totals.sessions / 2);
+  const keyBucket = Math.floor(totals.keys / 50) + Math.floor(totals.sessions / 2) * 3;
+  const timeIndex = Math.abs(timeBucket) % timeFactCandidates.length;
+  const keyIndex = Math.abs(keyBucket) % keyFactCandidates.length;
 
   return {
     time: timeFactCandidates[timeIndex],
