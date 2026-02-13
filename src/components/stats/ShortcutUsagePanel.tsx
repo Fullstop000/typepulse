@@ -7,6 +7,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { ShortcutStatRow } from "../../types";
+import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 import {
   formatShortcutLabel,
   shortcutActionLabel,
@@ -17,6 +18,9 @@ type ShortcutUsagePanelProps = {
 };
 
 type BadgeType = "clipboard" | "undo" | "switch";
+
+const BAR_FILL_GRADIENT =
+  "linear-gradient(90deg, rgba(147, 197, 253, 0.27) 0%, rgba(191, 219, 254, 0.20) 100%)";
 
 const BADGE_CONFIG: Record<
   BadgeType,
@@ -86,7 +90,7 @@ function ShortcutUsagePanel({ rows }: ShortcutUsagePanelProps) {
   const maxCount = Math.max(...topRows.map((r) => r.count), 0);
 
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm" h="full">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6" h="full">
       <HStack justify="space-between" mb="4" align="center">
         <Text fontSize="xl" fontWeight="semibold">
           快捷键使用统计
@@ -107,14 +111,14 @@ function ShortcutUsagePanel({ rows }: ShortcutUsagePanelProps) {
               return (
                 <Box
                   key={key}
-                  bg={config.bg}
+                  bg="rgba(255,255,255,0.52)"
                   p="2.5"
                   borderRadius="xl"
                   borderWidth="1px"
-                  borderColor={config.border}
+                  borderColor="glass.borderSoft"
                   transition="all 0.2s"
                   minW="190px"
-                  _hover={{ transform: "translateY(-2px)", boxShadow: "md" }}
+                  _hover={{ transform: "translateY(-2px)", boxShadow: "sm", bg: "rgba(255,255,255,0.62)" }}
                 >
                   <HStack gap="3">
                     <Box
@@ -162,8 +166,7 @@ function ShortcutUsagePanel({ rows }: ShortcutUsagePanelProps) {
               <Accordion.Item
                 key={row.shortcut_id}
                 value={row.shortcut_id}
-                borderWidth="1px"
-                borderColor="gray.200"
+                {...glassSubtleStyle}
                 borderRadius="12px"
                 mb="3"
                 overflow="hidden"
@@ -175,8 +178,8 @@ function ShortcutUsagePanel({ rows }: ShortcutUsagePanelProps) {
                     bottom="0"
                     left="0"
                     width={`${percentage}%`}
-                    bg="purple.50"
-                    opacity="0.5"
+                    bg={BAR_FILL_GRADIENT}
+                    opacity="0.9"
                     zIndex={0}
                   />
                   <HStack

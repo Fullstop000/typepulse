@@ -7,14 +7,15 @@ import SettingsPage from "./components/settings/page/SettingsPage";
 import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
 import {
-  DailyTopKeysRow,
   GroupedRow,
+  KeyUsageRow,
   ShortcutStatRow,
   Snapshot,
   Totals,
   TrendGranularity,
 } from "./types";
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
+import { glassSurfaceStyle } from "./styles/glass";
 
 type FilterRange = "today" | "yesterday" | "7d";
 
@@ -31,32 +32,30 @@ function App() {
   const [filteredShortcutStats, setFilteredShortcutStats] = useState<
     ShortcutStatRow[]
   >([]);
-  const [dailyTopKeysRows, setDailyTopKeysRows] = useState<DailyTopKeysRow[]>(
-    [],
-  );
+  const [topKeysRows, setTopKeysRows] = useState<KeyUsageRow[]>([]);
 
   useEffect(() => {
     let mounted = true;
     const fetchSnapshot = async () => {
       try {
-        const [data, shortcutRows, dailyRows] = await Promise.all([
+        const [data, shortcutRows, topRows] = await Promise.all([
           invoke<Snapshot>("get_snapshot"),
           invoke<ShortcutStatRow[]>("get_shortcut_stats_by_range", {
             range: filterRange,
           }),
-          invoke<DailyTopKeysRow[]>("get_daily_top_keys_by_range", {
+          invoke<KeyUsageRow[]>("get_daily_top_keys_by_range", {
             range: filterRange,
           }),
         ]);
         if (mounted) {
           setSnapshot(data);
           setFilteredShortcutStats(shortcutRows);
-          setDailyTopKeysRows(dailyRows);
+          setTopKeysRows(topRows);
         }
       } catch (error) {
         if (mounted) {
           setFilteredShortcutStats([]);
-          setDailyTopKeysRows([]);
+          setTopKeysRows([]);
         }
         console.error("failed to refresh snapshot", error);
       }
@@ -173,7 +172,46 @@ function App() {
   };
 
   return (
-    <Flex minH="100vh" bg="#efeff1">
+    <Flex minH="100vh" bg="transparent" position="relative">
+      {/* Decorative background blobs improve depth so glass blur is visually apparent. */}
+      <Box
+        pointerEvents="none"
+        position="fixed"
+        inset="0"
+        zIndex={0}
+        overflow="hidden"
+      >
+        <Box
+          position="absolute"
+          top="-140px"
+          left="-100px"
+          w="520px"
+          h="520px"
+          borderRadius="full"
+          bg="radial-gradient(circle, rgba(147,197,253,0.2) 0%, rgba(147,197,253,0) 72%)"
+          filter="blur(16px)"
+        />
+        <Box
+          position="absolute"
+          top="20%"
+          right="-140px"
+          w="540px"
+          h="540px"
+          borderRadius="full"
+          bg="radial-gradient(circle, rgba(165,180,252,0.18) 0%, rgba(165,180,252,0) 72%)"
+          filter="blur(18px)"
+        />
+        <Box
+          position="absolute"
+          bottom="-180px"
+          left="35%"
+          w="600px"
+          h="600px"
+          borderRadius="full"
+          bg="radial-gradient(circle, rgba(148,163,184,0.14) 0%, rgba(148,163,184,0) 74%)"
+          filter="blur(22px)"
+        />
+      </Box>
       <Sidebar
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -182,6 +220,8 @@ function App() {
       />
       <Box
         flex="1"
+        position="relative"
+        zIndex={1}
         overflowY="auto"
         px={{ base: 5, md: 10 }}
         py={{ base: 6, md: 8 }}
@@ -198,10 +238,9 @@ function App() {
           ) : null}
           {!snapshot ? (
             <Box
-              bg="white"
+              {...glassSurfaceStyle}
               borderRadius="16px"
               p="6"
-              boxShadow="0 10px 30px rgba(15,23,42,0.08)"
             >
               <Flex align="center" gap="2">
                 <Spinner size="sm" />
@@ -218,7 +257,7 @@ function App() {
               trendGranularity={trendGranularity}
               onTrendGranularityChange={setTrendGranularity}
               shortcutRows={filteredShortcutStats}
-              dailyTopKeysRows={dailyTopKeysRows}
+              topKeysRows={topKeysRows}
             />
           ) : activeTab === "logs" ? (
             <LogsPage

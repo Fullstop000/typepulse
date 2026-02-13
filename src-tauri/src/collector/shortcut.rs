@@ -8,7 +8,7 @@ use chrono::{Duration as ChronoDuration, Local, TimeZone};
 use crate::storage::{StoredInputAnalytics, StoredInputEventChunk, StoredShortcutUsage};
 
 use super::{
-    CaptureContext, CollectorState, DailyTopKeysRow, KeyUsageRow, ModifierSnapshot,
+    CaptureContext, CollectorState, KeyUsageRow, ModifierSnapshot,
     ShortcutAppUsageRow, ShortcutStatRow, ShortcutUsageValue,
 };
 
@@ -409,13 +409,13 @@ pub fn snapshot_shortcut_rows_by_range(
     snapshot_shortcut_rows_in_window(state, start_ms, end_ms)
 }
 
-// Rebuild daily top-key rows from compact key-down events for a requested time window.
-fn snapshot_daily_top_keys_in_window(
+// Rebuild top-key rows from compact key-down events for a requested time window.
+fn snapshot_top_keys_in_window(
     state: &CollectorState,
     start_ms: i64,
     end_ms: i64,
-) -> Vec<DailyTopKeysRow> {
-    let mut by_day: HashMap<String, HashMap<String, u64>> = HashMap::new();
+) -> Vec<KeyUsageRow> {
+    let mut key_counts: HashMap<String, u64> = HashMap::new();
     let mut consume_chunk = |chunk_start_ms: i64, events: &[String]| {
         for raw_event in events {
             let Some((dt, event_type, key, _modifiers)) = parse_compact_event(raw_event) else {
@@ -428,11 +428,7 @@ fn snapshot_daily_top_keys_in_window(
             if event_ms < start_ms || event_ms >= end_ms {
                 continue;
             }
-            let day = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(event_ms)
-                .map(|v| v.with_timezone(&Local).format("%Y-%m-%d").to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            let day_counts = by_day.entry(day).or_default();
-            *day_counts.entry(key).or_insert(0) += 1;
+            *key_counts.entry(key).or_insert(0) += 1;
         }
     };
 
@@ -443,30 +439,20 @@ fn snapshot_daily_top_keys_in_window(
         consume_chunk(open_chunk.chunk_start_ms, &open_chunk.events);
     }
 
-    let mut rows: Vec<DailyTopKeysRow> = by_day
+    let mut rows: Vec<KeyUsageRow> = key_counts
         .into_iter()
-        .map(|(date, key_counts)| {
-            let mut keys: Vec<KeyUsageRow> = key_counts
-                .into_iter()
-                .map(|(key, count)| KeyUsageRow { key, count })
-                .collect();
-            keys.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
-            DailyTopKeysRow {
-                date,
-                keys: keys.into_iter().take(5).collect(),
-            }
-        })
+        .map(|(key, count)| KeyUsageRow { key, count })
         .collect();
-    rows.sort_by(|a, b| b.date.cmp(&a.date));
-    rows
+    rows.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
+    rows.into_iter().take(5).collect()
 }
 
-/// Build daily top-key rows by selected range: `today` / `yesterday` / `7d`.
-pub fn snapshot_daily_top_keys_by_range(
+/// Build top-key rows by selected range: `today` / `yesterday` / `7d`.
+pub fn snapshot_top_keys_by_range(
     state: &CollectorState,
     range: &str,
-) -> Vec<DailyTopKeysRow> {
+) -> Vec<KeyUsageRow> {
     let now_ms = chrono::Utc::now().timestamp_millis();
     let (start_ms, end_ms) = shortcut_range_window_ms(range, now_ms);
-    snapshot_daily_top_keys_in_window(state, start_ms, end_ms)
+    snapshot_top_keys_in_window(state, start_ms, end_ms)
 }

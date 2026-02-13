@@ -1,5 +1,6 @@
 import { Box, HStack, Text } from "@chakra-ui/react";
 import { GroupedRow } from "../../types";
+import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 import { formatMs } from "../../utils/stats";
 
 type AppTableProps = {
@@ -10,12 +11,19 @@ function AppTable({ rows }: AppTableProps) {
   const maxTime = Math.max(...rows.map((r) => r.active_typing_ms), 0);
 
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm" h="full">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6" h="full">
       <Text fontSize="xl" fontWeight="semibold" mb="4">
         详细记录
       </Text>
-      <Box borderWidth="1px" borderColor="gray.200" borderRadius="12px" overflow="hidden">
-        <HStack px="4" py="3" bg="gray.50" fontWeight="semibold" fontSize="sm" justify="space-between">
+      <Box {...glassSubtleStyle} borderRadius="12px" overflow="hidden">
+        <HStack
+          px="4"
+          py="3"
+          bg="rgba(255,255,255,0.5)"
+          fontWeight="semibold"
+          fontSize="sm"
+          justify="space-between"
+        >
           <Text flex="2">应用</Text>
           <Text flex="1" textAlign="right">
             打字时长
@@ -40,9 +48,10 @@ function AppTable({ rows }: AppTableProps) {
                 px="4"
                 py="3"
                 borderTopWidth="1px"
-                borderColor="gray.100"
+                borderColor="glass.borderSoft"
                 justify="space-between"
                 fontSize="sm"
+                _hover={{ bg: "rgba(255,255,255,0.28)" }}
               >
                 <Text flex="2" truncate fontWeight="medium" color="gray.700">
                   {row.app_name}
@@ -54,7 +63,7 @@ function AppTable({ rows }: AppTableProps) {
                     top="1"
                     bottom="1"
                     width={`${timePercentage}%`}
-                    bg="green.50"
+                    bg="rgba(134, 239, 172, 0.28)"
                     borderRadius="sm"
                     zIndex={0}
                   />

@@ -111,3 +111,30 @@ This file defines repository-specific development rules for Codex agents.
 - `_lab/` is a local experiment sandbox directory for temporary feature spikes.
 - Treat `_lab/` as out-of-scope for normal feature work unless the user explicitly asks to read or modify it.
 - Do not include `_lab/` changes in commits/PRs unless the user explicitly requests it.
+
+## 11) API Contract Change Discipline
+
+- When changing a Tauri command response shape, update all contract layers in the same change:
+  1. Rust payload structs and command comments.
+  2. Frontend shared types (`src/types.ts`).
+  3. UI wiring/props that consume the payload.
+  4. At least one backend test covering the updated response semantics.
+- Avoid partial contract migration across multiple PRs unless explicitly requested.
+
+## 12) Design Token Consistency
+
+- For reusable visual language (glass surface, gradients, bar fills, interaction colors), prefer shared tokens/constants over one-off inline values.
+- If a style is used across multiple panels, extract it once (theme token or shared style module) and reuse it.
+- New UI changes should preserve visual coherence with existing tokenized styles before introducing a new color family.
+
+## 13) Unrelated Diff Isolation
+
+- Before commit, inspect staged and unstaged changes and exclude unrelated files by default.
+- Do not include formatting-only noise or editor/tooling artifacts in feature commits unless explicitly requested by the user.
+- If unrelated changes are discovered, either split them into separate commits or leave them out of the feature PR.
+
+## 14) PR Body Formatting Hygiene
+
+- When creating or editing GitHub PR descriptions, do not submit escaped newline literals like `\\n` in body text.
+- Always use real multiline markdown for PR bodies; prefer `gh pr create/edit --body-file <file>` when content has headings/lists.
+- After updating a PR body, verify rendered/raw content once to ensure formatting is correct.

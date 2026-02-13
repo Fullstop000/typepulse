@@ -1,9 +1,13 @@
 import { Badge, Box, HStack, Stack, Text } from "@chakra-ui/react";
-import { DailyTopKeysRow } from "../../types";
+import { KeyUsageRow } from "../../types";
+import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 
 type DailyTopKeysPanelProps = {
-  rows: DailyTopKeysRow[];
+  rows: KeyUsageRow[];
 };
+
+const BAR_FILL_GRADIENT =
+  "linear-gradient(90deg, rgba(147, 197, 253, 0.27) 0%, rgba(191, 219, 254, 0.20) 100%)";
 
 // Convert stored key ids to readable labels in daily top-key cards.
 function keyLabel(key: string): string {
@@ -33,14 +37,17 @@ function keyLabel(key: string): string {
 }
 
 function DailyTopKeysPanel({ rows }: DailyTopKeysPanelProps) {
+  const maxCount = Math.max(...rows.map((item) => item.count), 0);
+  const totalCount = rows.reduce((sum, item) => sum + item.count, 0);
+
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm" h="full">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6" h="full">
       <HStack justify="space-between" mb="4" align="center">
         <Text fontSize="xl" fontWeight="semibold">
-          每日按键 Top 5
+          Top5 按键
         </Text>
         <Text fontSize="sm" color="gray.600">
-          按天统计
+          按筛选时间聚合
         </Text>
       </HStack>
 
@@ -49,48 +56,80 @@ function DailyTopKeysPanel({ rows }: DailyTopKeysPanelProps) {
           当前时间范围内暂无可展示的按键数据。
         </Text>
       ) : (
-        <Stack gap="4">
-          {rows.map((row) => {
-             const maxCount = Math.max(...row.keys.map((k) => k.count), 0);
-             return (
-              <Box key={row.date} borderWidth="1px" borderColor="gray.200" borderRadius="12px" p="4">
-                <Text fontSize="sm" fontWeight="semibold" color="gray.700" mb="3">
-                  {row.date}
-                </Text>
-                <Stack gap="2">
-                  {row.keys.map((item, index) => {
-                    const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-                    return (
-                      <Box key={`${row.date}-${item.key}`} position="relative" borderRadius="md" overflow="hidden">
-                        <Box
-                          position="absolute"
-                          top="0"
-                          bottom="0"
-                          left="0"
-                          width={`${percentage}%`}
-                          bg="blue.50"
-                          opacity="0.6"
-                          zIndex={0}
-                        />
-                        <HStack justify="space-between" position="relative" zIndex={1} px="2" py="1">
-                          <HStack gap="2">
-                            <Badge colorPalette="blue" variant="subtle" size="sm" w="5" textAlign="center" justifyContent="center">
-                              {index + 1}
-                            </Badge>
-                            <Text fontSize="sm" fontWeight="medium">{keyLabel(item.key)}</Text>
-                          </HStack>
-                          <Text fontSize="xs" color="gray.600">
-                            {item.count}
-                          </Text>
-                        </HStack>
-                      </Box>
-                    );
-                  })}
-                </Stack>
-              </Box>
-            );
-          })}
-        </Stack>
+        <Box {...glassSubtleStyle} borderRadius="12px" p="4">
+          <HStack justify="space-between" align="center" mb="3">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+              当前筛选范围
+            </Text>
+            <Text fontSize="xs" color="gray.600">
+              Top5 合计 {totalCount}
+            </Text>
+          </HStack>
+          <Stack gap="2.5">
+            {rows.map((item, index) => {
+              const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+              return (
+                <Box
+                  key={`${item.key}-${index}`}
+                  position="relative"
+                  borderRadius="10px"
+                  overflow="hidden"
+                  minH="46px"
+                  bg="rgba(255,255,255,0.24)"
+                  borderWidth="1px"
+                  borderColor="glass.borderSoft"
+                >
+                  <Box
+                    position="absolute"
+                    top="0"
+                    bottom="0"
+                    left="0"
+                    width={`${percentage}%`}
+                    bg={BAR_FILL_GRADIENT}
+                    opacity="0.94"
+                    zIndex={0}
+                  />
+                  <HStack
+                    justify="space-between"
+                    position="relative"
+                    zIndex={1}
+                    px="3"
+                    py="2"
+                    borderRadius="8px"
+                    _hover={{ bg: "rgba(255,255,255,0.22)" }}
+                  >
+                    <HStack gap="2.5">
+                      <Badge
+                        colorPalette="blue"
+                        variant="subtle"
+                        size="sm"
+                        w="6"
+                        textAlign="center"
+                        justifyContent="center"
+                      >
+                        {index + 1}
+                      </Badge>
+                      <Text fontSize="md" fontWeight="semibold">
+                        {keyLabel(item.key)}
+                      </Text>
+                    </HStack>
+                    <Badge
+                      variant="outline"
+                      bg="rgba(255,255,255,0.68)"
+                      borderColor="glass.borderSoft"
+                      color="gray.700"
+                      px="2"
+                      py="0.5"
+                      fontWeight="semibold"
+                    >
+                      {item.count}
+                    </Badge>
+                  </HStack>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Box>
       )}
     </Box>
   );

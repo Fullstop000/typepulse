@@ -43,7 +43,7 @@ use self::shortcut::{
     build_stored_input_analytics, flush_expired_open_chunk, rebuild_shortcut_usage_from_chunks,
     snapshot_shortcut_rows, InputEventChunk, OpenInputEventChunk,
 };
-pub use self::shortcut::{snapshot_daily_top_keys_by_range, snapshot_shortcut_rows_by_range};
+pub use self::shortcut::{snapshot_shortcut_rows_by_range, snapshot_top_keys_by_range};
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub(crate) struct StatsKey {
@@ -84,18 +84,11 @@ pub struct ShortcutStatRow {
     pub apps: Vec<ShortcutAppUsageRow>,
 }
 
-/// Per-key usage count row used by daily top-key ranking payload.
+/// Per-key usage count row used by top-key ranking payload.
 #[derive(Serialize, Clone)]
 pub struct KeyUsageRow {
     pub key: String,
     pub count: u64,
-}
-
-/// Daily top-key summary payload grouped by local date.
-#[derive(Serialize, Clone)]
-pub struct DailyTopKeysRow {
-    pub date: String,
-    pub keys: Vec<KeyUsageRow>,
 }
 
 #[derive(Serialize, Clone)]
@@ -643,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn daily_top_keys_counts_key_down_only_and_sorts() {
+    fn top_keys_counts_key_down_only_and_sorts() {
         let mut state = build_state(HashMap::new());
         let now_ms = chrono::Utc::now().timestamp_millis();
         state.event_chunks.push(super::shortcut::InputEventChunk {
@@ -658,12 +651,11 @@ mod tests {
             ],
         });
 
-        let rows = super::snapshot_daily_top_keys_by_range(&state, "today");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].keys.len(), 2);
-        assert_eq!(rows[0].keys[0].key, "a");
-        assert_eq!(rows[0].keys[0].count, 2);
-        assert_eq!(rows[0].keys[1].key, "tab");
-        assert_eq!(rows[0].keys[1].count, 1);
+        let rows = super::snapshot_top_keys_by_range(&state, "today");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].key, "a");
+        assert_eq!(rows[0].count, 2);
+        assert_eq!(rows[1].key, "tab");
+        assert_eq!(rows[1].count, 1);
     }
 }

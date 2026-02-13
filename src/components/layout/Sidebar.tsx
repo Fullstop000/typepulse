@@ -57,11 +57,11 @@ function NavButton({
     <Button
       justifyContent="flex-start"
       variant="ghost"
-      bg={active ? "#d9d9dd" : "transparent"}
+      bg={active ? "rgba(255, 255, 255, 0.72)" : "transparent"}
       color={fg}
-      _hover={{ bg: active ? "#d9d9dd" : "#e6e6ea", color: "#1f2328" }}
+      _hover={{ bg: active ? "rgba(255, 255, 255, 0.78)" : "rgba(255, 255, 255, 0.48)", color: "#1f2328" }}
       fontWeight={active ? "semibold" : "medium"}
-      borderRadius="8px"
+      borderRadius="10px"
       onClick={onClick}
       w="full"
       h="34px"
@@ -82,9 +82,12 @@ function Sidebar({ activeTab, onChange, isCollecting, onTogglePause }: SidebarPr
   return (
     <Box
       w={{ base: "220px", md: "240px" }}
-      bg="#e8e8ec"
+      bg="rgba(232, 234, 240, 0.78)"
       borderRightWidth="1px"
-      borderColor="#d9d9dd"
+      borderColor="rgba(255, 255, 255, 0.72)"
+      backdropFilter="blur(16px) saturate(1.08)"
+      css={{ WebkitBackdropFilter: "blur(16px) saturate(1.08)" }}
+      boxShadow="inset -1px 0 0 rgba(255,255,255,0.45)"
       p="4"
       minH="100vh"
       position="sticky"
@@ -107,9 +110,11 @@ function Sidebar({ activeTab, onChange, isCollecting, onTogglePause }: SidebarPr
           px="2"
           py="2"
           borderRadius="10px"
-          bg="#ededf0"
+          bg="glass.subtle"
           borderWidth="1px"
-          borderColor="#d9d9dd"
+          borderColor="glass.borderSoft"
+          backdropFilter="blur(10px) saturate(1.04)"
+          css={{ WebkitBackdropFilter: "blur(10px) saturate(1.04)" }}
           justify="space-between"
         >
           <HStack gap="1.5">

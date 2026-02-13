@@ -67,8 +67,3 @@ export type KeyUsageRow = {
   key: string;
   count: number;
 };
-
-export type DailyTopKeysRow = {
-  date: string;
-  keys: KeyUsageRow[];
-};
