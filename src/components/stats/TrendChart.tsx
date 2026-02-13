@@ -3,6 +3,7 @@ import { Accordion, Box, Button, ButtonGroup, Flex, HStack, Text } from "@chakra
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { TrendGranularity, TrendSeries } from "../../types";
+import { glassPillStyle, glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 
 type TrendChartProps = {
   series: TrendSeries;
@@ -206,21 +207,61 @@ function TrendChart({ series, granularity, onGranularityChange }: TrendChartProp
   }, []);
 
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6">
       <Flex justify="space-between" align="center" gap="3" flexWrap="wrap" mb="4">
         <Text fontSize="xl" fontWeight="semibold">键盘活跃度</Text>
-        <ButtonGroup size="sm" variant="outline" attached>
-          <Button onClick={() => onGranularityChange("1m")} variant={granularity === "1m" ? "solid" : "outline"}>1分钟</Button>
-          <Button onClick={() => onGranularityChange("5m")} variant={granularity === "5m" ? "solid" : "outline"}>5分钟</Button>
-          <Button onClick={() => onGranularityChange("1h")} variant={granularity === "1h" ? "solid" : "outline"}>1小时</Button>
-          <Button onClick={() => onGranularityChange("1d")} variant={granularity === "1d" ? "solid" : "outline"}>1天</Button>
+        <ButtonGroup size="sm" gap="1" {...glassPillStyle} borderRadius="999px" p="1">
+          <Button
+            onClick={() => onGranularityChange("1m")}
+            variant="ghost"
+            borderRadius="999px"
+            bg={granularity === "1m" ? "rgba(255,255,255,0.82)" : "transparent"}
+            boxShadow={granularity === "1m" ? "sm" : "none"}
+          >
+            1分钟
+          </Button>
+          <Button
+            onClick={() => onGranularityChange("5m")}
+            variant="ghost"
+            borderRadius="999px"
+            bg={granularity === "5m" ? "rgba(255,255,255,0.82)" : "transparent"}
+            boxShadow={granularity === "5m" ? "sm" : "none"}
+          >
+            5分钟
+          </Button>
+          <Button
+            onClick={() => onGranularityChange("1h")}
+            variant="ghost"
+            borderRadius="999px"
+            bg={granularity === "1h" ? "rgba(255,255,255,0.82)" : "transparent"}
+            boxShadow={granularity === "1h" ? "sm" : "none"}
+          >
+            1小时
+          </Button>
+          <Button
+            onClick={() => onGranularityChange("1d")}
+            variant="ghost"
+            borderRadius="999px"
+            bg={granularity === "1d" ? "rgba(255,255,255,0.82)" : "transparent"}
+            boxShadow={granularity === "1d" ? "sm" : "none"}
+          >
+            1天
+          </Button>
         </ButtonGroup>
       </Flex>
       {hasData ? (
         <>
-          <Box ref={chartRef} minH="220px" />
+          <Box
+            ref={chartRef}
+            minH="220px"
+            borderRadius="12px"
+            bg="rgba(255,255,255,0.32)"
+            borderWidth="1px"
+            borderColor="glass.borderSoft"
+            p="1"
+          />
           <Accordion.Root mt="5" collapsible defaultValue={[]}>
-            <Accordion.Item value="average-trend" borderWidth="1px" borderColor="gray.200" borderRadius="12px">
+            <Accordion.Item value="average-trend" {...glassSubtleStyle} borderRadius="12px">
               <Accordion.ItemTrigger px="4" py="3">
                 <HStack justify="space-between" w="full">
                   <Text fontSize="sm" fontWeight="semibold" color="gray.700">输入强度趋势</Text>
@@ -229,7 +270,15 @@ function TrendChart({ series, granularity, onGranularityChange }: TrendChartProp
               </Accordion.ItemTrigger>
               <Accordion.ItemContent>
                 <Accordion.ItemBody px="0" pb="1">
-                  <Box ref={averageChartRef} minH="220px" />
+                  <Box
+                    ref={averageChartRef}
+                    minH="220px"
+                    borderRadius="12px"
+                    bg="rgba(255,255,255,0.28)"
+                    borderWidth="1px"
+                    borderColor="glass.borderSoft"
+                    p="1"
+                  />
                 </Accordion.ItemBody>
               </Accordion.ItemContent>
             </Accordion.Item>

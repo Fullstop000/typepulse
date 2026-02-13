@@ -1,7 +1,7 @@
-import { Box, Grid, GridItem, Heading, HStack } from "@chakra-ui/react";
+import { Box, Grid, GridItem, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import {
-  DailyTopKeysRow,
   GroupedRow,
+  KeyUsageRow,
   ShortcutStatRow,
   Totals,
   TrendGranularity,
@@ -23,7 +23,7 @@ type StatsPageProps = {
   trendGranularity: TrendGranularity;
   onTrendGranularityChange: (value: TrendGranularity) => void;
   shortcutRows: ShortcutStatRow[];
-  dailyTopKeysRows: DailyTopKeysRow[];
+  topKeysRows: KeyUsageRow[];
 };
 
 function StatsPage({
@@ -35,14 +35,19 @@ function StatsPage({
   trendGranularity,
   onTrendGranularityChange,
   shortcutRows,
-  dailyTopKeysRows,
+  topKeysRows,
 }: StatsPageProps) {
   return (
     <Box>
       <HStack justify="space-between" align="center" mb="6">
-        <Heading size="2xl" fontWeight="bold" color="gray.800">
-          数据概览
-        </Heading>
+        <Stack gap="1">
+          <Heading size="2xl" fontWeight="bold" color="gray.800">
+            数据概览
+          </Heading>
+          <Text fontSize="sm" color="gray.600">
+            你的输入节奏、应用分布和效率偏好，都在这里一屏看完。
+          </Text>
+        </Stack>
         <FilterBar filterRange={filterRange} onChange={onFilterChange} />
       </HStack>
 
@@ -64,7 +69,7 @@ function StatsPage({
           />
         </GridItem>
         <GridItem minW="0">
-          <DailyTopKeysPanel rows={dailyTopKeysRows} />
+          <DailyTopKeysPanel rows={topKeysRows} />
         </GridItem>
       </Grid>
 

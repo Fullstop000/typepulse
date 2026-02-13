@@ -1,4 +1,5 @@
 import { Box, Button, Grid, HStack, Text } from "@chakra-ui/react";
+import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 
 type LogsPageProps = {
   typingLogText: string;
@@ -17,10 +18,18 @@ function LogPanel({
   onRefresh: () => void;
 }) {
   return (
-    <Box borderWidth="1px" borderColor="gray.200" borderRadius="12px" p="4" bg="white">
+    <Box {...glassSubtleStyle} borderRadius="12px" p="4">
       <HStack justify="space-between" mb="3">
         <Text fontWeight="semibold">{title}</Text>
-        <Button size="sm" variant="outline" onClick={onRefresh}>
+        <Button
+          size="sm"
+          variant="ghost"
+          borderWidth="1px"
+          borderColor="glass.borderSoft"
+          bg="rgba(255,255,255,0.56)"
+          _hover={{ bg: "rgba(255,255,255,0.74)" }}
+          onClick={onRefresh}
+        >
           刷新
         </Button>
       </HStack>
@@ -45,7 +54,7 @@ function LogPanel({
 
 function LogsPage({ typingLogText, appLogText, onRefreshTyping, onRefreshApp }: LogsPageProps) {
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6">
       <Grid templateColumns={{ base: "1fr", xl: "1fr 1fr" }} gap="4">
         <LogPanel title="Typing Log" content={typingLogText} onRefresh={onRefreshTyping} />
         <LogPanel title="App Log" content={appLogText} onRefresh={onRefreshApp} />

@@ -24,21 +24,25 @@ function SettingsPage({ snapshot, onSnapshotChange }: SettingsPageProps) {
     <SettingsProvider snapshot={snapshot} onSnapshotChange={onSnapshotChange}>
       <Stack gap="4">
         <HStack justify="space-between" align="center">
-          <Text fontSize="2xl" fontWeight="semibold" color="#1f2328">
+          <Text fontSize="2xl" fontWeight="semibold" color="gray.800">
             Settings
           </Text>
           <HStack
-            gap="1.5"
-            bg="#ececef"
+            gap="1"
+            bg="glass.pill"
             borderWidth="1px"
-            borderColor="#d9d9dd"
-            borderRadius="10px"
+            borderColor="glass.border"
+            backdropFilter="blur(10px) saturate(1.05)"
+            css={{ WebkitBackdropFilter: "blur(10px) saturate(1.05)" }}
+            borderRadius="999px"
             p="1"
           >
             <Button
               size="sm"
               variant="ghost"
-              borderRadius="8px"
+              borderRadius="999px"
+              bg="rgba(255,255,255,0.68)"
+              _hover={{ bg: "rgba(255,255,255,0.8)" }}
               onClick={() => scrollToAnchor("settings-general")}
             >
               General
@@ -46,7 +50,9 @@ function SettingsPage({ snapshot, onSnapshotChange }: SettingsPageProps) {
             <Button
               size="sm"
               variant="ghost"
-              borderRadius="8px"
+              borderRadius="999px"
+              bg="rgba(255,255,255,0.68)"
+              _hover={{ bg: "rgba(255,255,255,0.8)" }}
               onClick={() => scrollToAnchor("settings-appearance")}
             >
               Appearance
@@ -54,7 +60,9 @@ function SettingsPage({ snapshot, onSnapshotChange }: SettingsPageProps) {
             <Button
               size="sm"
               variant="ghost"
-              borderRadius="8px"
+              borderRadius="999px"
+              bg="rgba(255,255,255,0.68)"
+              _hover={{ bg: "rgba(255,255,255,0.8)" }}
               onClick={() => scrollToAnchor("settings-storage")}
             >
               Storage

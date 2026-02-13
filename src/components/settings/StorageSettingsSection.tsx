@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Box, Button, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
+import { glassSurfaceStyle } from "../../styles/glass";
 
 function StorageSettingsSection() {
   const [dataSize, setDataSize] = useState<number | null>(null);
@@ -37,8 +38,8 @@ function StorageSettingsSection() {
   }, []);
 
   return (
-    <Box bg="#f5f5f6" borderRadius="12px" borderWidth="1px" borderColor="#dddddf" p="0" overflow="hidden">
-      <Box px="5" py="4" borderBottomWidth="1px" borderColor="#e4e4e7">
+    <Box {...glassSurfaceStyle} borderRadius="12px" p="0" overflow="hidden">
+      <Box px="5" py="4" borderBottomWidth="1px" borderColor="glass.borderSoft">
         <Text fontSize="lg" fontWeight="semibold" color="#111827">Storage</Text>
       </Box>
       <Box px="5" py="4">
@@ -48,11 +49,11 @@ function StorageSettingsSection() {
         ) : null}
         <Button
           onClick={handleOpenDataDir}
-          bg="#e7e7ea"
+          bg="rgba(255,255,255,0.62)"
           color="#1f2328"
           borderWidth="1px"
-          borderColor="#d1d5db"
-          _hover={{ bg: "#dddddf" }}
+          borderColor="glass.borderSoft"
+          _hover={{ bg: "rgba(255,255,255,0.8)" }}
         >
           前往数据目录
         </Button>

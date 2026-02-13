@@ -7,8 +7,8 @@ use crate::{
     app_config::{save_app_config, MenuBarDisplayMode},
     apply_menu_bar_mode_immediately,
     collector::{
-        self, bundle_id_from_app_path, running_apps, snapshot_daily_top_keys_by_range,
-        snapshot_shortcut_rows_by_range, DailyTopKeysRow, RunningAppInfo, ShortcutStatRow,
+        self, bundle_id_from_app_path, running_apps, snapshot_shortcut_rows_by_range,
+        snapshot_top_keys_by_range, KeyUsageRow, RunningAppInfo, ShortcutStatRow,
         StatsSnapshot,
     },
     AppState,
@@ -48,14 +48,14 @@ pub(crate) fn get_shortcut_stats_by_range(
     vec![]
 }
 
-/// 按时间范围返回每日按键 Top 5（today / yesterday / 7d）。
+/// 按时间范围返回 Top5 按键（today / yesterday / 7d，聚合展示）。
 #[tauri::command]
 pub(crate) fn get_daily_top_keys_by_range(
     state: State<AppState>,
     range: String,
-) -> Vec<DailyTopKeysRow> {
+) -> Vec<KeyUsageRow> {
     if let Ok(locked) = state.inner.lock() {
-        return snapshot_daily_top_keys_by_range(&locked, &range);
+        return snapshot_top_keys_by_range(&locked, &range);
     }
     vec![]
 }

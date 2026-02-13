@@ -1,5 +1,21 @@
-import { Accordion, Box, Grid, HStack, Portal, Text, Tooltip } from "@chakra-ui/react";
+import {
+  Accordion,
+  Box,
+  Grid,
+  HStack,
+  Portal,
+  Text,
+  Tooltip,
+} from "@chakra-ui/react";
+import {
+  Activity,
+  Clock3,
+  Keyboard,
+  Layers3,
+  LucideIcon,
+} from "lucide-react";
 import { Totals } from "../../types";
+import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 import { formatMs } from "../../utils/stats";
 
 type MetricsGridProps = {
@@ -10,6 +26,10 @@ type MetricProps = {
   label: string;
   help: string;
   value: string | number;
+  icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+  isPrimary?: boolean;
   funFact?: string;
 };
 
@@ -17,31 +37,31 @@ type MetricProps = {
 function buildFunFacts(totals: Totals) {
   const activeMinutes = Math.floor(totals.active / 60000);
   const activeSeconds = Math.max(0, Math.floor(totals.active / 1000));
-  
-  // Constants for calculations
+
+  // Constants for calculations.
   const songDurationMin = 4; // Average song ~4 mins
   const instantNoodleMin = 3; // 3 mins to cook noodles
   const movieFrameRate = 24; // 24 fps
   const daySeconds = 86400;
-  
-  // Key constants
+
+  // Key constants.
   const keyStrokeDistanceMm = 4; // ~4mm travel distance per key
   const fingerTravelCm = 2; // ~2cm finger travel per key (average)
   const chineseCharStrokes = 3; // Avg keystrokes per Chinese character
-  
-  // Heights & Distances
+
+  // Heights & distances.
   const eiffelTowerM = 330;
-  
-  // Literary works (approximate keystrokes/words)
+
+  // Literary works (approximate keystrokes/words).
   const oldManAndSeaWords = 27000; // ~27k words
   const gaokaoEssayChars = 800; // 800 chars
-  
-  // Calculations
+
+  // Calculations.
   const fingerDistanceKm = (totals.keys * fingerTravelCm) / 100000;
   const keyStackHeightM = (totals.keys * keyStrokeDistanceMm) / 1000;
   const estimatedChineseChars = Math.floor(totals.keys / chineseCharStrokes);
   const estimatedEnglishWords = Math.floor(totals.keys / 6);
-  
+
   const timeFactCandidates = [
     `你的活跃输入时长相当于听了 ${Math.max(1, Math.floor(activeMinutes / songDurationMin))} 首歌。`,
     `这段专注的时间，足够煮 ${Math.max(1, Number((activeMinutes / instantNoodleMin).toFixed(1)))} 碗泡面了。`,
@@ -62,7 +82,8 @@ function buildFunFacts(totals: Totals) {
 
   // Rotate facts by coarse buckets to avoid changing on every single keystroke.
   const timeBucket = Math.floor(activeMinutes / 5) + Math.floor(totals.sessions / 2);
-  const keyBucket = Math.floor(totals.keys / 50) + Math.floor(totals.sessions / 2) * 3;
+  const keyBucket =
+    Math.floor(totals.keys / 50) + Math.floor(totals.sessions / 2) * 3;
   const timeIndex = Math.abs(timeBucket) % timeFactCandidates.length;
   const keyIndex = Math.abs(keyBucket) % keyFactCandidates.length;
 
@@ -88,18 +109,51 @@ function buildSegmentInsights(totals: Totals) {
   };
 }
 
-function Metric({ label, help, value, funFact }: MetricProps) {
+function Metric({
+  label,
+  help,
+  value,
+  icon: Icon,
+  iconBg,
+  iconColor,
+  isPrimary = false,
+  funFact,
+}: MetricProps) {
+  const iconSize = isPrimary ? "9" : "8";
+  const labelFontSize = isPrimary ? "lg" : "md";
+  const valueFontSize = isPrimary
+    ? { base: "44px", md: "52px" }
+    : { base: "38px", md: "44px" };
+
   return (
-    <Box>
-      <HStack gap="2" mb="2">
-        <Text fontSize="sm" color="gray.600">{label}</Text>
+    <Box {...glassSubtleStyle} borderRadius="14px" p={isPrimary ? "5" : "4"}>
+      <HStack justify="space-between" align="start" mb={isPrimary ? "3" : "2.5"}>
+        <HStack gap="2.5">
+          <Box
+            display="inline-flex"
+            alignItems="center"
+            justifyContent="center"
+            w={iconSize}
+            h={iconSize}
+            borderRadius="10px"
+            bg={iconBg}
+            color={iconColor}
+            borderWidth="1px"
+            borderColor="glass.borderSoft"
+          >
+            <Icon size={isPrimary ? 18 : 16} />
+          </Box>
+          <Text fontSize={labelFontSize} color="gray.700" fontWeight="semibold">
+            {label}
+          </Text>
+        </HStack>
         <Tooltip.Root openDelay={150} closeDelay={50} positioning={{ placement: "top" }}>
           <Tooltip.Trigger asChild>
             <Box
               as="span"
               fontSize="xs"
               borderRadius="full"
-              bg="gray.200"
+              bg="rgba(255,255,255,0.72)"
               px="2"
               py="0.5"
               cursor="help"
@@ -120,8 +174,31 @@ function Metric({ label, help, value, funFact }: MetricProps) {
           </Portal>
         </Tooltip.Root>
       </HStack>
-      <Text fontSize="2xl" fontWeight="bold">{value}</Text>
-      {funFact ? <Text mt="2" fontSize="xs" color="gray.600">{funFact}</Text> : null}
+      <Text
+        fontSize={valueFontSize}
+        fontWeight="bold"
+        lineHeight="1"
+        letterSpacing="-0.02em"
+        color="gray.900"
+      >
+        {value}
+      </Text>
+      {funFact ? (
+        <Box
+          mt="4"
+          px="3.5"
+          py="3"
+          borderRadius="10px"
+          bg="rgba(255,255,255,0.52)"
+          borderWidth="1px"
+          borderColor="glass.borderSoft"
+          boxShadow="inset 0 1px 0 rgba(255,255,255,0.38)"
+        >
+          <Text fontSize="sm" color="gray.700" lineHeight="1.65">
+            {funFact}
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -129,47 +206,71 @@ function Metric({ label, help, value, funFact }: MetricProps) {
 function MetricsGrid({ totals }: MetricsGridProps) {
   const funFacts = buildFunFacts(totals);
   const segmentInsights = buildSegmentInsights(totals);
+
   return (
-    <Box bg="white" borderRadius="16px" p="6" boxShadow="sm">
-      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap="6">
+    <Box {...glassSurfaceStyle} borderRadius="16px" p="6">
+      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap="5">
         <Metric
           label="打字时长"
           help="按键间隔不超过5秒的时间，加起来就是打字时长"
           value={formatMs(totals.active)}
+          icon={Clock3}
+          iconBg="blue.100"
+          iconColor="blue.700"
+          isPrimary
           funFact={funFacts.time}
         />
         <Metric
           label="按键次数"
           help="你一共按了多少次键"
           value={totals.keys}
+          icon={Keyboard}
+          iconBg="teal.100"
+          iconColor="teal.700"
+          isPrimary
           funFact={funFacts.keys}
         />
       </Grid>
-      <Accordion.Root mt="5" collapsible defaultValue={[]}>
-        <Accordion.Item value="more-metrics" borderWidth="1px" borderColor="gray.200" borderRadius="12px">
-          <Accordion.ItemTrigger px="4" py="3">
+      <Accordion.Root mt="4" collapsible defaultValue={[]}>
+        <Accordion.Item
+          value="more-metrics"
+          {...glassSubtleStyle}
+          borderRadius="12px"
+        >
+          <Accordion.ItemTrigger px="4" py="3.5">
             <HStack justify="space-between" w="full">
-              <Text fontSize="sm" fontWeight="semibold" color="gray.700">更多指标</Text>
+              <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+                更多指标
+              </Text>
               <Accordion.ItemIndicator />
             </HStack>
           </Accordion.ItemTrigger>
           <Accordion.ItemContent>
-            <Accordion.ItemBody px="4" pb="4">
-              <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap="4">
+            <Accordion.ItemBody px="4" pt="2" pb="4">
+              <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap="3">
                 <Metric
                   label="输入段数"
                   help="两次按键隔了超过5秒，就算开始了一个新的输入段。"
                   value={totals.sessions}
+                  icon={Layers3}
+                  iconBg="purple.100"
+                  iconColor="purple.700"
                 />
                 <Metric
                   label="平均每段打字时长"
                   help="总打字时长除以输入段数。"
                   value={segmentInsights.averageDurationPerSegment}
+                  icon={Activity}
+                  iconBg="cyan.100"
+                  iconColor="cyan.700"
                 />
                 <Metric
                   label="平均每段按键次数"
                   help="总按键次数除以输入段数。"
                   value={segmentInsights.averageKeysPerSegment}
+                  icon={Activity}
+                  iconBg="green.100"
+                  iconColor="green.700"
                 />
               </Grid>
             </Accordion.ItemBody>
