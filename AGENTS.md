@@ -132,3 +132,9 @@ This file defines repository-specific development rules for Codex agents.
 - Before commit, inspect staged and unstaged changes and exclude unrelated files by default.
 - Do not include formatting-only noise or editor/tooling artifacts in feature commits unless explicitly requested by the user.
 - If unrelated changes are discovered, either split them into separate commits or leave them out of the feature PR.
+
+## 14) PR Body Formatting Hygiene
+
+- When creating or editing GitHub PR descriptions, do not submit escaped newline literals like `\\n` in body text.
+- Always use real multiline markdown for PR bodies; prefer `gh pr create/edit --body-file <file>` when content has headings/lists.
+- After updating a PR body, verify rendered/raw content once to ensure formatting is correct.
