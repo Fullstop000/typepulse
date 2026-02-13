@@ -219,7 +219,7 @@ function TrendChart({ series, granularity, onGranularityChange }: TrendChartProp
       {hasData ? (
         <>
           <Box ref={chartRef} minH="220px" />
-          <Accordion.Root mt="5" collapsible defaultValue={["average-trend"]}>
+          <Accordion.Root mt="5" collapsible defaultValue={[]}>
             <Accordion.Item value="average-trend" borderWidth="1px" borderColor="gray.200" borderRadius="12px">
               <Accordion.ItemTrigger px="4" py="3">
                 <HStack justify="space-between" w="full">
