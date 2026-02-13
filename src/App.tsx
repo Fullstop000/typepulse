@@ -20,13 +20,20 @@ type FilterRange = "today" | "yesterday" | "7d";
 
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">("stats");
+  const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">(
+    "stats",
+  );
   const [typingLogText, setTypingLogText] = useState("");
   const [appLogText, setAppLogText] = useState("");
   const [filterRange, setFilterRange] = useState<FilterRange>("today");
-  const [trendGranularity, setTrendGranularity] = useState<TrendGranularity>("5m");
-  const [filteredShortcutStats, setFilteredShortcutStats] = useState<ShortcutStatRow[]>([]);
-  const [dailyTopKeysRows, setDailyTopKeysRows] = useState<DailyTopKeysRow[]>([]);
+  const [trendGranularity, setTrendGranularity] =
+    useState<TrendGranularity>("5m");
+  const [filteredShortcutStats, setFilteredShortcutStats] = useState<
+    ShortcutStatRow[]
+  >([]);
+  const [dailyTopKeysRows, setDailyTopKeysRows] = useState<DailyTopKeysRow[]>(
+    [],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -34,8 +41,12 @@ function App() {
       try {
         const [data, shortcutRows, dailyRows] = await Promise.all([
           invoke<Snapshot>("get_snapshot"),
-          invoke<ShortcutStatRow[]>("get_shortcut_stats_by_range", { range: filterRange }),
-          invoke<DailyTopKeysRow[]>("get_daily_top_keys_by_range", { range: filterRange }),
+          invoke<ShortcutStatRow[]>("get_shortcut_stats_by_range", {
+            range: filterRange,
+          }),
+          invoke<DailyTopKeysRow[]>("get_daily_top_keys_by_range", {
+            range: filterRange,
+          }),
         ]);
         if (mounted) {
           setSnapshot(data);
@@ -79,7 +90,8 @@ function App() {
     };
   }, [activeTab]);
 
-  const pageTitle = activeTab === "stats" ? "数据" : activeTab === "logs" ? "日志" : "设置";
+  const pageTitle =
+    activeTab === "stats" ? "数据" : activeTab === "logs" ? "日志" : "设置";
 
   const filteredRows = useMemo(() => {
     const rows = snapshot?.rows ?? [];
@@ -118,7 +130,9 @@ function App() {
       entry.session_count += row.session_count;
       grouped.set(row.app_name, entry);
     }
-    return Array.from(grouped.values()).sort((a, b) => b.active_typing_ms - a.active_typing_ms);
+    return Array.from(grouped.values()).sort(
+      (a, b) => b.active_typing_ms - a.active_typing_ms,
+    );
   }, [filteredRows]);
 
   const totals = useMemo<Totals>(
@@ -139,7 +153,9 @@ function App() {
     () => buildTrendSeries(snapshot?.rows ?? [], trendGranularity),
     [snapshot, trendGranularity],
   );
-  const isCollecting = snapshot ? !snapshot.paused && !snapshot.auto_paused : false;
+  const isCollecting = snapshot
+    ? !snapshot.paused && !snapshot.auto_paused
+    : false;
 
   // Toggle collector pause state from the global sidebar control.
   const handleTogglePause = async () => {
@@ -164,11 +180,29 @@ function App() {
         isCollecting={isCollecting}
         onTogglePause={handleTogglePause}
       />
-      <Box flex="1" overflowY="auto" px={{ base: 5, md: 10 }} py={{ base: 6, md: 8 }}>
-        <Container maxW={activeTab === "settings" ? "920px" : "1100px"} px="0" display="flex" flexDirection="column" gap="5">
-          {snapshot && activeTab !== "settings" ? <PageHeader title={pageTitle} /> : null}
+      <Box
+        flex="1"
+        overflowY="auto"
+        px={{ base: 5, md: 10 }}
+        py={{ base: 6, md: 8 }}
+      >
+        <Container
+          maxW={activeTab === "settings" ? "920px" : "1100px"}
+          px="0"
+          display="flex"
+          flexDirection="column"
+          gap="5"
+        >
+          {snapshot && activeTab !== "settings" && activeTab !== "stats" ? (
+            <PageHeader title={pageTitle} />
+          ) : null}
           {!snapshot ? (
-            <Box bg="white" borderRadius="16px" p="6" boxShadow="0 10px 30px rgba(15,23,42,0.08)">
+            <Box
+              bg="white"
+              borderRadius="16px"
+              p="6"
+              boxShadow="0 10px 30px rgba(15,23,42,0.08)"
+            >
               <Flex align="center" gap="2">
                 <Spinner size="sm" />
                 <Text>加载中…</Text>
@@ -190,14 +224,15 @@ function App() {
             <LogsPage
               typingLogText={typingLogText}
               appLogText={appLogText}
-              onRefreshTyping={async () => setTypingLogText(await invoke<string>("get_log_tail"))}
-              onRefreshApp={async () => setAppLogText(await invoke<string>("get_app_log_tail"))}
+              onRefreshTyping={async () =>
+                setTypingLogText(await invoke<string>("get_log_tail"))
+              }
+              onRefreshApp={async () =>
+                setAppLogText(await invoke<string>("get_app_log_tail"))
+              }
             />
           ) : (
-            <SettingsPage
-              snapshot={snapshot}
-              onSnapshotChange={setSnapshot}
-            />
+            <SettingsPage snapshot={snapshot} onSnapshotChange={setSnapshot} />
           )}
         </Container>
       </Box>

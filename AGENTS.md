@@ -84,12 +84,14 @@ This file defines repository-specific development rules for Codex agents.
 - Keep frontend/backend contract names aligned (invoke command names and payload fields).
 
 ## 7.1) Branch Workflow For New Features (Required)
+
 - When user explicitly asks to "实现新功能/feature" or "do refactor", always execute this Git workflow first:
   1. Checkout `main`.
   2. Pull latest `origin/main`.
   3. Checkout a new branch with `codex/` prefix.
 - Before switching branch or implementing feature work, if local changes are present (staged or unstaged), stop and ask user to confirm how to handle them.
 - Do not carry unrelated residual changes into the new feature branch without user confirmation.
+
 ## 8) Commit Style
 
 - Follow conventional-style commits with scope when possible:
@@ -103,3 +105,9 @@ This file defines repository-specific development rules for Codex agents.
 - Do not introduce heavy state-management libraries.
 - Do not split into monorepo/workspace tooling.
 - Do not change storage format compatibility casually (must preserve existing local data readability).
+
+## 10) Local Experiment Area
+
+- `_lab/` is a local experiment sandbox directory for temporary feature spikes.
+- Treat `_lab/` as out-of-scope for normal feature work unless the user explicitly asks to read or modify it.
+- Do not include `_lab/` changes in commits/PRs unless the user explicitly requests it.
