@@ -8,19 +8,21 @@ This file defines repository-specific development rules for Codex agents.
 - Always handle errors explicitly. Never silently swallow errors unless intentionally degraded behavior is documented in code comments.
 - Prefer pragmatic architecture: design for current scale and near-term extension, but avoid speculative over-design.
 
-## 1) Stack And Scope
+## 1) Architecture And Scope
 
 - Frontend: React + TypeScript + Vite (`src/`).
 - Desktop/backend: Tauri 2 + Rust (`src-tauri/`).
 - Do not bypass this split. System capabilities must be implemented in Rust and exposed to frontend via Tauri commands.
 
-## 2) Source Of Truth
+## 2) State And Data Ownership
 
 - `Snapshot` is the UI source of truth for runtime state.
 - Settings mutations must go through backend commands and return latest `Snapshot`.
 - Avoid local duplicated state for backend-owned fields.
 
-## 3) Frontend Conventions
+## 3) Frontend Standards
+
+### 3.1) General
 
 - Keep domain types centralized in `src/types.ts` when shared across components.
 - Keep computation helpers in `src/utils/`.
@@ -33,7 +35,7 @@ This file defines repository-specific development rules for Codex agents.
 - UI copy can be Chinese; code identifiers should stay English.
 - For user-facing copy (titles, descriptions, helper text), prioritize vivid and easy-to-understand language; avoid flat, overly literal, or rigidly technical phrasing.
 
-## 3.1) Chakra UI v3 Conventions (Required)
+### 3.2) Chakra UI v3 Conventions (Required)
 
 - Use Chakra UI v3 as the default UI layer for frontend screens.
 - Provider setup must use v3 system API:
@@ -51,7 +53,13 @@ This file defines repository-specific development rules for Codex agents.
   - Do not re-introduce: `@emotion/styled`, `framer-motion` (not required by Chakra v3)
 - If a Chakra component typing/API is unstable for current use case, use stable primitives or native element fallback with clear local styling.
 
-## 4) Backend Conventions
+### 3.3) Design Token Consistency
+
+- For reusable visual language (glass surface, gradients, bar fills, interaction colors), prefer shared tokens/constants over one-off inline values.
+- If a style is used across multiple panels, extract it once (theme token or shared style module) and reuse it.
+- New UI changes should preserve visual coherence with existing tokenized styles before introducing a new color family.
+
+## 4) Backend Standards
 
 - Tauri commands live in `src-tauri/src/command.rs`.
 - Keep commands focused: one responsibility per command.
@@ -65,16 +73,9 @@ This file defines repository-specific development rules for Codex agents.
 - Preserve secure-input and app exclusion protections.
 - Any change that may affect sensitive input handling must be treated as high risk and verified.
 
-## 6) Quality Gates
+## 6) Delivery Workflow
 
-- TypeScript must pass strict compile checks (`npm run build` includes `tsc`).
-- Rust tests should pass in `src-tauri` (`cargo test`).
-- Tauri app build should remain valid (`npm run tauri build`).
-- For meaningful feature changes, run at least:
-  - `npm run build`
-  - `cargo test --manifest-path src-tauri/Cargo.toml`
-
-## 7) Change Workflow
+### 6.1) Implementation Order
 
 - Prefer implementing in this order for feature work:
   1. Rust command/state/config changes.
@@ -83,7 +84,7 @@ This file defines repository-specific development rules for Codex agents.
   4. Validation/build checks.
 - Keep frontend/backend contract names aligned (invoke command names and payload fields).
 
-## 7.1) Branch Workflow For New Features (Required)
+### 6.2) Branch Workflow For New Features (Required)
 
 - When user explicitly asks to "实现新功能/feature" or "do refactor", always execute this Git workflow first:
   1. Checkout `main`.
@@ -92,27 +93,7 @@ This file defines repository-specific development rules for Codex agents.
 - Before switching branch or implementing feature work, if local changes are present (staged or unstaged), stop and ask user to confirm how to handle them.
 - Do not carry unrelated residual changes into the new feature branch without user confirmation.
 
-## 8) Commit Style
-
-- Follow conventional-style commits with scope when possible:
-  - `feat(settings): ...`
-  - `fix(command): ...`
-  - `refactor(config): ...`
-  - `ci: ...`
-
-## 9) Non-Goals Without Explicit Request
-
-- Do not introduce heavy state-management libraries.
-- Do not split into monorepo/workspace tooling.
-- Do not change storage format compatibility casually (must preserve existing local data readability).
-
-## 10) Local Experiment Area
-
-- `_lab/` is a local experiment sandbox directory for temporary feature spikes.
-- Treat `_lab/` as out-of-scope for normal feature work unless the user explicitly asks to read or modify it.
-- Do not include `_lab/` changes in commits/PRs unless the user explicitly requests it.
-
-## 11) API Contract Change Discipline
+### 6.3) API Contract Change Discipline
 
 - When changing a Tauri command response shape, update all contract layers in the same change:
   1. Rust payload structs and command comments.
@@ -121,20 +102,43 @@ This file defines repository-specific development rules for Codex agents.
   4. At least one backend test covering the updated response semantics.
 - Avoid partial contract migration across multiple PRs unless explicitly requested.
 
-## 12) Design Token Consistency
-
-- For reusable visual language (glass surface, gradients, bar fills, interaction colors), prefer shared tokens/constants over one-off inline values.
-- If a style is used across multiple panels, extract it once (theme token or shared style module) and reuse it.
-- New UI changes should preserve visual coherence with existing tokenized styles before introducing a new color family.
-
-## 13) Unrelated Diff Isolation
+### 6.4) Unrelated Diff Isolation
 
 - Before commit, inspect staged and unstaged changes and exclude unrelated files by default.
 - Do not include formatting-only noise or editor/tooling artifacts in feature commits unless explicitly requested by the user.
 - If unrelated changes are discovered, either split them into separate commits or leave them out of the feature PR.
 
-## 14) PR Body Formatting Hygiene
+### 6.5) Local Experiment Area
+
+- `_lab/` is a local experiment sandbox directory for temporary feature spikes.
+- Treat `_lab/` as out-of-scope for normal feature work unless the user explicitly asks to read or modify it.
+- Do not include `_lab/` changes in commits/PRs unless the user explicitly requests it.
+
+### 6.6) Commit Style
+
+- Follow conventional-style commits with scope when possible:
+  - `feat(settings): ...`
+  - `fix(command): ...`
+  - `refactor(config): ...`
+  - `ci: ...`
+
+### 6.7) PR Body Formatting Hygiene
 
 - When creating or editing GitHub PR descriptions, do not submit escaped newline literals like `\\n` in body text.
 - Always use real multiline markdown for PR bodies; prefer `gh pr create/edit --body-file <file>` when content has headings/lists.
 - After updating a PR body, verify rendered/raw content once to ensure formatting is correct.
+
+## 7) Quality Gates
+
+- TypeScript must pass strict compile checks (`npm run build` includes `tsc`).
+- Rust tests should pass in `src-tauri` (`cargo test`).
+- Tauri app build should remain valid (`npm run tauri build`).
+- For meaningful feature changes, run at least:
+  - `npm run build`
+  - `cargo test --manifest-path src-tauri/Cargo.toml`
+
+## 8) Scope Boundaries (Non-Goals)
+
+- Do not introduce heavy state-management libraries.
+- Do not split into monorepo/workspace tooling.
+- Do not change storage format compatibility casually (must preserve existing local data readability).
