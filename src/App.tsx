@@ -72,13 +72,18 @@ function App() {
     if (activeTab !== "logs") return;
     let mounted = true;
     const fetchLog = async () => {
-      const [typingData, appData] = await Promise.all([
-        invoke<string>("get_log_tail"),
-        invoke<string>("get_app_log_tail"),
-      ]);
-      if (mounted) {
-        setTypingLogText(typingData);
-        setAppLogText(appData);
+      try {
+        const [typingData, appData] = await Promise.all([
+          invoke<string>("get_log_tail"),
+          invoke<string>("get_app_log_tail"),
+        ]);
+        if (mounted) {
+          setTypingLogText(typingData);
+          setAppLogText(appData);
+        }
+      } catch (error) {
+        // Keep the previous log content on transient read errors.
+        console.error("failed to refresh logs", error);
       }
     };
     fetchLog();
@@ -251,6 +256,7 @@ function App() {
             <StatsPage
               filterRange={filterRange}
               onFilterChange={setFilterRange}
+              allRows={snapshot.rows}
               totals={totals}
               groupedRows={groupedRows}
               trendSeries={trendSeries}

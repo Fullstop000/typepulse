@@ -14,12 +14,14 @@ import {
   Layers3,
   LucideIcon,
 } from "lucide-react";
-import { Totals } from "../../types";
+import { StatsRow, Totals } from "../../types";
 import { glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
 import { formatMs } from "../../utils/stats";
+import ContributionHeatmap from "./ContributionHeatmap";
 
 type MetricsGridProps = {
   totals: Totals;
+  rows: StatsRow[];
 };
 
 type MetricProps = {
@@ -203,13 +205,16 @@ function Metric({
   );
 }
 
-function MetricsGrid({ totals }: MetricsGridProps) {
+function MetricsGrid({ totals, rows }: MetricsGridProps) {
   const funFacts = buildFunFacts(totals);
   const segmentInsights = buildSegmentInsights(totals);
 
   return (
     <Box {...glassSurfaceStyle} borderRadius="16px" p="6">
-      <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap="5">
+      <Grid
+        templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", xl: "1fr 1fr 1.15fr" }}
+        gap="5"
+      >
         <Metric
           label="打字时长"
           help="按键间隔不超过5秒的时间，加起来就是打字时长"
@@ -230,6 +235,14 @@ function MetricsGrid({ totals }: MetricsGridProps) {
           isPrimary
           funFact={funFacts.keys}
         />
+        <Box
+          {...glassSubtleStyle}
+          borderRadius="14px"
+          p="4"
+          gridColumn={{ base: "1", md: "1 / -1", xl: "auto" }}
+        >
+          <ContributionHeatmap rows={rows} embedded />
+        </Box>
       </Grid>
       <Accordion.Root mt="4" collapsible defaultValue={[]}>
         <Accordion.Item
