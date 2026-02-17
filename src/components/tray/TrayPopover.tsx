@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Box, Button, Grid, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
 import { Circle, Clock3, Keyboard, Power, SquareArrowOutUpRight } from "lucide-react";
+import {
+  trayActionButtonStyle,
+  trayMetricCardStyle,
+  trayPopoverOverlayStyle,
+  trayPopoverSurfaceStyle,
+} from "../../styles/glass";
 import { Snapshot } from "../../types";
 import { formatMs, parseRowDate } from "../../utils/stats";
 
@@ -186,26 +192,18 @@ function TrayPopover() {
   return (
     <Box minH="100vh" bg="transparent" position="relative" overflow="hidden">
       <Box
+        {...trayPopoverSurfaceStyle}
         position="relative"
         minH="100vh"
         p="2.5"
         borderRadius="20px"
-        bg="rgba(242, 246, 252, 0.14)"
-        borderWidth="1px"
-        borderColor="rgba(255,255,255,0.46)"
-        backdropFilter="blur(52px) saturate(1.65) brightness(1.04)"
-        {...({ WebkitBackdropFilter: "blur(52px) saturate(1.65) brightness(1.04)" } as Record<
-          string,
-          string
-        >)}
-        boxShadow="0 10px 24px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.66)"
       >
         <Box
+          {...trayPopoverOverlayStyle}
           pointerEvents="none"
           position="absolute"
           inset="0"
           borderRadius="inherit"
-          bg="linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.02) 48%, rgba(255,255,255,0.09) 100%)"
         />
         <Stack position="relative" zIndex={1} gap="2">
           <HStack justify="space-between" align="center" mb="0.5">
@@ -228,21 +226,10 @@ function TrayPopover() {
           ) : (
             <Grid templateColumns="repeat(2, minmax(0, 1fr))" gap="1.5">
               <Box
+                {...trayMetricCardStyle}
                 py="1.5"
                 px="2.25"
                 borderRadius="13px"
-                bg="rgba(255,255,255,0.12)"
-                display="flex"
-                flexDirection="column"
-                alignItems="center"
-                borderWidth="1px"
-                borderColor="rgba(255,255,255,0.3)"
-                backdropFilter="blur(18px) saturate(1.2)"
-                {...({ WebkitBackdropFilter: "blur(18px) saturate(1.2)" } as Record<
-                  string,
-                  string
-                >)}
-                boxShadow="0 3px 8px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.42)"
               >
                 <HStack gap="1.5" mb="1" color="gray.700" justify="center">
                   <Clock3 size={13} />
@@ -259,21 +246,10 @@ function TrayPopover() {
                 </Text>
               </Box>
               <Box
+                {...trayMetricCardStyle}
                 py="1.5"
                 px="2.25"
                 borderRadius="13px"
-                bg="rgba(255,255,255,0.12)"
-                display="flex"
-                flexDirection="column"
-                alignItems="center"
-                borderWidth="1px"
-                borderColor="rgba(255,255,255,0.3)"
-                backdropFilter="blur(18px) saturate(1.2)"
-                {...({ WebkitBackdropFilter: "blur(18px) saturate(1.2)" } as Record<
-                  string,
-                  string
-                >)}
-                boxShadow="0 3px 8px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.42)"
               >
                 <HStack gap="1.5" mb="1" color="gray.700" justify="center">
                   <Keyboard size={13} />
@@ -294,6 +270,7 @@ function TrayPopover() {
 
           <Stack mt="0.75" gap="2">
             <Button
+              {...trayActionButtonStyle}
               size="sm"
               h="43px"
               px="3.5"
@@ -306,19 +283,7 @@ function TrayPopover() {
                 pendingAction === "open" ||
                 pendingAction === "quit"
               }
-              bg="rgba(255,255,255,0.14)"
               color={toggleTextColor}
-              borderWidth="1px"
-              borderColor="rgba(255,255,255,0.36)"
-              backdropFilter="blur(18px) saturate(1.22)"
-              {...({ WebkitBackdropFilter: "blur(18px) saturate(1.22)" } as Record<
-                string,
-                string
-              >)}
-              boxShadow="0 4px 10px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.48)"
-              _hover={{
-                bg: "rgba(255,255,255,0.2)",
-              }}
             >
               <HStack gap="2.25">
                 <Circle size={8} fill={toggleTone} color={toggleTone} />
@@ -329,6 +294,7 @@ function TrayPopover() {
             </Button>
             <Grid templateColumns="1fr 1fr" gap="2">
               <Button
+                {...trayActionButtonStyle}
                 size="sm"
                 h="43px"
                 px="3.5"
@@ -336,17 +302,7 @@ function TrayPopover() {
                 onClick={handleOpenMain}
                 loading={pendingAction === "open"}
                 disabled={pendingAction === "toggle" || pendingAction === "quit"}
-                bg="rgba(255,255,255,0.14)"
                 color="gray.800"
-                borderWidth="1px"
-                borderColor="rgba(255,255,255,0.36)"
-                backdropFilter="blur(18px) saturate(1.22)"
-                {...({ WebkitBackdropFilter: "blur(18px) saturate(1.22)" } as Record<
-                  string,
-                  string
-                >)}
-                boxShadow="0 4px 10px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.48)"
-                _hover={{ bg: "rgba(255,255,255,0.2)" }}
               >
                 <HStack gap="2">
                   <SquareArrowOutUpRight size={13} />
@@ -356,6 +312,7 @@ function TrayPopover() {
                 </HStack>
               </Button>
               <Button
+                {...trayActionButtonStyle}
                 size="sm"
                 h="43px"
                 px="3.5"
@@ -363,17 +320,7 @@ function TrayPopover() {
                 onClick={handleQuit}
                 loading={pendingAction === "quit"}
                 disabled={pendingAction === "toggle" || pendingAction === "open"}
-                bg="rgba(255,255,255,0.14)"
                 color="gray.800"
-                borderWidth="1px"
-                borderColor="rgba(255,255,255,0.36)"
-                backdropFilter="blur(18px) saturate(1.22)"
-                {...({ WebkitBackdropFilter: "blur(18px) saturate(1.22)" } as Record<
-                  string,
-                  string
-                >)}
-                boxShadow="0 4px 10px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.48)"
-                _hover={{ bg: "rgba(255,255,255,0.2)" }}
               >
                 <HStack gap="2">
                   <Power size={13} />

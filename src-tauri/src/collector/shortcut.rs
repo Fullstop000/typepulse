@@ -8,8 +8,8 @@ use chrono::{Duration as ChronoDuration, Local, TimeZone};
 use crate::storage::{StoredInputAnalytics, StoredInputEventChunk, StoredShortcutUsage};
 
 use super::{
-    CaptureContext, CollectorState, KeyUsageRow, ModifierSnapshot,
-    ShortcutAppUsageRow, ShortcutStatRow, ShortcutUsageValue,
+    CaptureContext, CollectorState, KeyUsageRow, ModifierSnapshot, ShortcutAppUsageRow,
+    ShortcutStatRow, ShortcutUsageValue,
 };
 
 const INPUT_CHUNK_WINDOW_MS: i64 = 5_000;
@@ -448,10 +448,7 @@ fn snapshot_top_keys_in_window(
 }
 
 /// Build top-key rows by selected range: `today` / `yesterday` / `7d`.
-pub fn snapshot_top_keys_by_range(
-    state: &CollectorState,
-    range: &str,
-) -> Vec<KeyUsageRow> {
+pub fn snapshot_top_keys_by_range(state: &CollectorState, range: &str) -> Vec<KeyUsageRow> {
     let now_ms = chrono::Utc::now().timestamp_millis();
     let (start_ms, end_ms) = shortcut_range_window_ms(range, now_ms);
     snapshot_top_keys_in_window(state, start_ms, end_ms)
