@@ -8,10 +8,9 @@ use crate::{
     apply_menu_bar_mode_immediately,
     collector::{
         self, bundle_id_from_app_path, running_apps, snapshot_shortcut_rows_by_range,
-        snapshot_top_keys_by_range, KeyUsageRow, RunningAppInfo, ShortcutStatRow,
-        StatsSnapshot,
+        snapshot_top_keys_by_range, KeyUsageRow, RunningAppInfo, ShortcutStatRow, StatsSnapshot,
     },
-    AppState,
+    show_main_window, AppState,
 };
 
 /// 获取当前采集快照，供前端轮询刷新仪表盘。
@@ -295,6 +294,18 @@ pub(crate) fn update_menu_bar_display_mode(
         return snapshot;
     }
     get_snapshot(state)
+}
+
+/// 从托盘弹层或菜单请求显示主面板并置前。
+#[tauri::command]
+pub(crate) fn show_main_panel(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app)
+}
+
+/// 退出应用进程。
+#[tauri::command]
+pub(crate) fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 /// 清空已采集统计数据并返回最新快照。
