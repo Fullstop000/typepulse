@@ -6,6 +6,7 @@ import PageHeader from "./components/layout/PageHeader";
 import SettingsPage from "./components/settings/page/SettingsPage";
 import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
+import TrayPopover from "./components/tray/TrayPopover";
 import {
   GroupedRow,
   KeyUsageRow,
@@ -19,7 +20,7 @@ import { glassSurfaceStyle } from "./styles/glass";
 
 type FilterRange = "today" | "yesterday" | "7d";
 
-function App() {
+function DesktopApp() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [activeTab, setActiveTab] = useState<"stats" | "logs" | "settings">(
     "stats",
@@ -283,6 +284,14 @@ function App() {
       </Box>
     </Flex>
   );
+}
+
+function App() {
+  const isTrayPopoverMode = window.location.hash === "#tray-popover";
+  if (isTrayPopoverMode) {
+    return <TrayPopover />;
+  }
+  return <DesktopApp />;
 }
 
 export default App;

@@ -7,11 +7,14 @@ use std::{
 use app_config::{load_app_config, AppConfig, MenuBarDisplayMode};
 use chrono::Local;
 use collector::{new_collector_state, start_collector, StatsSnapshot};
+#[cfg(target_os = "macos")]
+use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem},
-    tray::TrayIconBuilder,
-    Manager, Wry,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    window::Color,
+    Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder, Wry,
 };
 
 mod app_config;
@@ -34,17 +37,27 @@ struct TraySummaryItems {
     toggle_item: AppMenuItem,
 }
 
+const TRAY_POPOVER_LABEL: &str = "tray-popover";
+const TRAY_POPOVER_WIDTH: f64 = 356.0;
+const TRAY_POPOVER_HEIGHT: f64 = 236.0;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                if window.label() == "main" || window.label() == TRAY_POPOVER_LABEL {
                     let _ = window.hide();
                     api.prevent_close();
                 }
             }
+            tauri::WindowEvent::Focused(false) => {
+                if window.label() == TRAY_POPOVER_LABEL {
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
         })
         .setup(|app| {
             let data_dir = if cfg!(debug_assertions) {
@@ -106,7 +119,9 @@ pub fn run() {
             command::get_log_tail,
             command::get_app_log_tail,
             command::open_data_dir,
-            command::get_data_dir_size
+            command::get_data_dir_size,
+            command::show_main_panel,
+            command::quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -138,13 +153,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
         .tooltip("TypePulse")
-        .show_menu_on_left_click(true)
+        .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
             if event.id() == "show" {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                let _ = show_main_window(app);
             }
             if event.id() == "quit" {
                 app.exit(0);
@@ -163,6 +175,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
                     );
                 }
             }
+        })
+        .on_tray_icon_event(|tray, event| {
+            handle_tray_icon_event(tray, event);
         });
 
     let black_icon = Image::from_bytes(include_bytes!("../icons/l_black.png"))
@@ -185,6 +200,148 @@ fn build_tray(app: &tauri::App) -> tauri::Result<TraySummaryItems> {
         overview_item,
         toggle_item,
     })
+}
+
+// Handle tray icon click to toggle a custom lightweight popover window.
+fn handle_tray_icon_event(tray: &tauri::tray::TrayIcon<Wry>, event: TrayIconEvent) {
+    let TrayIconEvent::Click {
+        button,
+        button_state,
+        position,
+        ..
+    } = event
+    else {
+        return;
+    };
+    if button != MouseButton::Left || button_state != MouseButtonState::Up {
+        return;
+    }
+    let app = tray.app_handle();
+    if let Some(popover) = app.get_webview_window(TRAY_POPOVER_LABEL) {
+        if let Ok(true) = popover.is_visible() {
+            let _ = popover.hide();
+            return;
+        }
+    }
+    if let Err(err) = show_tray_popover(app, position) {
+        append_tray_log(app, &format!("failed to show tray popover: {}", err));
+    }
+}
+
+// Ensure the tray popover window exists before toggling visibility/position.
+fn ensure_tray_popover_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow<Wry>, String> {
+    if let Some(window) = app.get_webview_window(TRAY_POPOVER_LABEL) {
+        return Ok(window);
+    }
+
+    let window = WebviewWindowBuilder::new(
+        app,
+        TRAY_POPOVER_LABEL,
+        WebviewUrl::App("index.html#tray-popover".into()),
+    )
+    .title("TypePulse")
+    .inner_size(TRAY_POPOVER_WIDTH, TRAY_POPOVER_HEIGHT)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .decorations(false)
+    .transparent(true)
+    .background_color(Color(0, 0, 0, 0))
+    .shadow(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .build()
+    .map_err(|err| err.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        // Prefer Menu material for tray popover to better match macOS native control-center glass.
+        if let Err(err) = window.set_effects(
+            EffectsBuilder::new()
+                .effect(Effect::Menu)
+                .state(EffectState::Active)
+                .radius(14.0)
+                .build(),
+        ) {
+            append_tray_log(
+                app,
+                &format!("failed to apply tray vibrancy effect: {}", err),
+            );
+        }
+    }
+
+    Ok(window)
+}
+
+// Place popover near tray click point and keep it inside the current monitor bounds.
+fn place_tray_popover(window: &tauri::WebviewWindow<Wry>, click_position: PhysicalPosition<f64>) {
+    let outer_size = window.outer_size().ok();
+    let width = outer_size
+        .map(|size| size.width as f64)
+        .unwrap_or(TRAY_POPOVER_WIDTH);
+    let height = outer_size
+        .map(|size| size.height as f64)
+        .unwrap_or(TRAY_POPOVER_HEIGHT);
+
+    let mut x = click_position.x - width / 2.0;
+    let mut y = click_position.y + 12.0;
+
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let monitor_pos = monitor.position();
+        let monitor_size = monitor.size();
+        let min_x = monitor_pos.x as f64 + 8.0;
+        let max_x = monitor_pos.x as f64 + monitor_size.width as f64 - width - 8.0;
+        if max_x > min_x {
+            x = x.clamp(min_x, max_x);
+        }
+        let max_y = monitor_pos.y as f64 + monitor_size.height as f64 - height - 8.0;
+        if y > max_y {
+            y = (click_position.y - height - 12.0).max(monitor_pos.y as f64 + 8.0);
+        }
+    }
+
+    let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+}
+
+// Show and focus the tray popover, creating it when needed.
+fn show_tray_popover(
+    app: &tauri::AppHandle,
+    click_position: PhysicalPosition<f64>,
+) -> Result<(), String> {
+    let window = ensure_tray_popover_window(app)?;
+    place_tray_popover(&window, click_position);
+    window.show().map_err(|err| err.to_string())?;
+    let _ = window.unminimize();
+    window.set_focus().map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn hide_tray_popover(app: &tauri::AppHandle) {
+    if let Some(popover) = app.get_webview_window(TRAY_POPOVER_LABEL) {
+        if let Err(err) = popover.hide() {
+            append_tray_log(app, &format!("failed to hide tray popover: {}", err));
+        }
+    }
+}
+
+// Open main dashboard window from tray interactions and keep popover hidden.
+pub(crate) fn show_main_window(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("main window not found".to_string());
+    };
+    window.show().map_err(|err| err.to_string())?;
+    let _ = window.unminimize();
+    window.set_focus().map_err(|err| err.to_string())?;
+    hide_tray_popover(app);
+    Ok(())
+}
+
+// Write tray operation errors into app log without impacting runtime behavior.
+fn append_tray_log(app: &tauri::AppHandle, message: &str) {
+    if let Ok(locked) = app.state::<AppState>().inner.lock() {
+        let _ = collector::append_app_log(&locked.app_log_path, message);
+    }
 }
 
 fn start_tray_updater(
