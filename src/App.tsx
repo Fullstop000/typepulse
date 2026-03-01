@@ -8,6 +8,7 @@ import Sidebar from "./components/layout/Sidebar";
 import StatsPage from "./components/stats/StatsPage";
 import TrayPopover from "./components/tray/TrayPopover";
 import {
+  FilterRange,
   GroupedRow,
   KeyUsageRow,
   ShortcutStatRow,
@@ -18,7 +19,12 @@ import {
 import { buildTrendSeries, parseRowDate } from "./utils/stats";
 import { glassSurfaceStyle } from "./styles/glass";
 
-type FilterRange = "today" | "yesterday" | "7d";
+// Keep trend granularity options aligned with the overview date filter.
+const trendGranularityOptionsByRange: Record<FilterRange, TrendGranularity[]> = {
+  today: ["1m", "5m", "1h"],
+  yesterday: ["1m", "5m", "1h"],
+  "7d": ["1h", "1d"],
+};
 
 function DesktopApp() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -68,6 +74,14 @@ function DesktopApp() {
       clearInterval(id);
     };
   }, [filterRange]);
+
+  useEffect(() => {
+    // Force selected granularity to remain valid after overview range changes.
+    const availableGranularities = trendGranularityOptionsByRange[filterRange];
+    if (!availableGranularities.includes(trendGranularity)) {
+      setTrendGranularity("1h");
+    }
+  }, [filterRange, trendGranularity]);
 
   useEffect(() => {
     if (activeTab !== "logs") return;
@@ -155,8 +169,8 @@ function DesktopApp() {
   );
 
   const trendSeries = useMemo(
-    () => buildTrendSeries(snapshot?.rows ?? [], trendGranularity),
-    [snapshot, trendGranularity],
+    () => buildTrendSeries(filteredRows, trendGranularity, filterRange),
+    [filteredRows, trendGranularity, filterRange],
   );
   const isCollecting = snapshot
     ? !snapshot.paused && !snapshot.auto_paused
@@ -229,6 +243,7 @@ function DesktopApp() {
         position="relative"
         zIndex={1}
         overflowY="auto"
+        overscrollBehaviorY="none"
         px={{ base: 5, md: 10 }}
         py={{ base: 6, md: 8 }}
       >

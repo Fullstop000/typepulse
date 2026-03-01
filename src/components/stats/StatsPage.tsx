@@ -1,5 +1,6 @@
 import { Box, Grid, GridItem, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import {
+  FilterRange,
   GroupedRow,
   KeyUsageRow,
   StatsRow,
@@ -16,8 +17,8 @@ import ShortcutUsagePanel from "./ShortcutUsagePanel";
 import TrendChart from "./TrendChart";
 
 type StatsPageProps = {
-  filterRange: "today" | "yesterday" | "7d";
-  onFilterChange: (value: "today" | "yesterday" | "7d") => void;
+  filterRange: FilterRange;
+  onFilterChange: (value: FilterRange) => void;
   allRows: StatsRow[];
   totals: Totals;
   groupedRows: GroupedRow[];
@@ -70,6 +71,7 @@ function StatsPage({
           <TrendChart
             series={trendSeries}
             granularity={trendGranularity}
+            filterRange={filterRange}
             onGranularityChange={onTrendGranularityChange}
           />
         </GridItem>

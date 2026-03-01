@@ -1,3 +1,5 @@
+export type FilterRange = "today" | "yesterday" | "7d";
+
 export type StatsRow = {
   date: string;
   app_name: string;

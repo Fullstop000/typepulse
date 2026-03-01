@@ -2,21 +2,48 @@ import { useEffect, useMemo, useRef } from "react";
 import { Accordion, Box, Button, ButtonGroup, Flex, HStack, Text } from "@chakra-ui/react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { TrendGranularity, TrendSeries } from "../../types";
+import { FilterRange, TrendGranularity, TrendSeries } from "../../types";
 import { glassPillStyle, glassSubtleStyle, glassSurfaceStyle } from "../../styles/glass";
+
+const trendGranularityOptionsByRange: Record<
+  FilterRange,
+  { value: TrendGranularity; label: string }[]
+> = {
+  today: [
+    { value: "1m", label: "1分钟" },
+    { value: "5m", label: "5分钟" },
+    { value: "1h", label: "1小时" },
+  ],
+  yesterday: [
+    { value: "1m", label: "1分钟" },
+    { value: "5m", label: "5分钟" },
+    { value: "1h", label: "1小时" },
+  ],
+  "7d": [
+    { value: "1h", label: "1小时" },
+    { value: "1d", label: "1天" },
+  ],
+};
 
 type TrendChartProps = {
   series: TrendSeries;
   granularity: TrendGranularity;
+  filterRange: FilterRange;
   onGranularityChange: (value: TrendGranularity) => void;
 };
 
-function TrendChart({ series, granularity, onGranularityChange }: TrendChartProps) {
+function TrendChart({
+  series,
+  granularity,
+  filterRange,
+  onGranularityChange,
+}: TrendChartProps) {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const averageChartRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const averagePlotRef = useRef<uPlot | null>(null);
   const hasData = series.timestamps.length > 0;
+  const granularityOptions = trendGranularityOptionsByRange[filterRange];
 
   const data = useMemo<uPlot.AlignedData>(
     () => [series.timestamps, series.activeSeconds, series.keyCounts] as uPlot.AlignedData,
@@ -211,42 +238,18 @@ function TrendChart({ series, granularity, onGranularityChange }: TrendChartProp
       <Flex justify="space-between" align="center" gap="3" flexWrap="wrap" mb="4">
         <Text fontSize="xl" fontWeight="semibold">键盘活跃度</Text>
         <ButtonGroup size="sm" gap="1" {...glassPillStyle} borderRadius="999px" p="1">
-          <Button
-            onClick={() => onGranularityChange("1m")}
-            variant="ghost"
-            borderRadius="999px"
-            bg={granularity === "1m" ? "rgba(255,255,255,0.82)" : "transparent"}
-            boxShadow={granularity === "1m" ? "sm" : "none"}
-          >
-            1分钟
-          </Button>
-          <Button
-            onClick={() => onGranularityChange("5m")}
-            variant="ghost"
-            borderRadius="999px"
-            bg={granularity === "5m" ? "rgba(255,255,255,0.82)" : "transparent"}
-            boxShadow={granularity === "5m" ? "sm" : "none"}
-          >
-            5分钟
-          </Button>
-          <Button
-            onClick={() => onGranularityChange("1h")}
-            variant="ghost"
-            borderRadius="999px"
-            bg={granularity === "1h" ? "rgba(255,255,255,0.82)" : "transparent"}
-            boxShadow={granularity === "1h" ? "sm" : "none"}
-          >
-            1小时
-          </Button>
-          <Button
-            onClick={() => onGranularityChange("1d")}
-            variant="ghost"
-            borderRadius="999px"
-            bg={granularity === "1d" ? "rgba(255,255,255,0.82)" : "transparent"}
-            boxShadow={granularity === "1d" ? "sm" : "none"}
-          >
-            1天
-          </Button>
+          {granularityOptions.map((option) => (
+            <Button
+              key={option.value}
+              onClick={() => onGranularityChange(option.value)}
+              variant="ghost"
+              borderRadius="999px"
+              bg={granularity === option.value ? "rgba(255,255,255,0.82)" : "transparent"}
+              boxShadow={granularity === option.value ? "sm" : "none"}
+            >
+              {option.label}
+            </Button>
+          ))}
         </ButtonGroup>
       </Flex>
       {hasData ? (
