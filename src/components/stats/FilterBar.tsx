@@ -1,8 +1,9 @@
 import { Box, Button, HStack } from "@chakra-ui/react";
+import { FilterRange } from "../../types";
 
 type FilterBarProps = {
-  filterRange: "today" | "yesterday" | "7d";
-  onChange: (value: "today" | "yesterday" | "7d") => void;
+  filterRange: FilterRange;
+  onChange: (value: FilterRange) => void;
 };
 
 function FilterBar({ filterRange, onChange }: FilterBarProps) {

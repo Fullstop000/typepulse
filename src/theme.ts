@@ -26,6 +26,9 @@ export const system = createSystem(defaultConfig, {
     },
   },
   globalCss: {
+    html: {
+      overscrollBehaviorY: "none",
+    },
     body: {
       bg: `
         radial-gradient(920px 500px at 14% -10%, rgba(191, 219, 254, 0.24), transparent 60%),
@@ -36,9 +39,11 @@ export const system = createSystem(defaultConfig, {
       color: "#1f2328",
       minH: "100vh",
       backgroundAttachment: "fixed",
+      overscrollBehaviorY: "none",
     },
     "#root": {
       minH: "100vh",
+      overscrollBehaviorY: "none",
     },
   },
 });

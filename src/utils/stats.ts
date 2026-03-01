@@ -1,4 +1,4 @@
-import { StatsRow, TrendGranularity, TrendSeries } from "../types";
+import { FilterRange, StatsRow, TrendGranularity, TrendSeries } from "../types";
 
 export const parseRowDate = (value: string) =>
   value.includes(" ")
@@ -45,24 +45,51 @@ export const formatMs = (ms: number) => {
 export const buildTrendSeries = (
   rows: StatsRow[],
   granularity: TrendGranularity,
+  filterRange: FilterRange,
 ): TrendSeries => {
-  const config = {
-    "1m": { rangeMinutes: 20, bucketMinutes: 1 },
-    "5m": { rangeMinutes: 60, bucketMinutes: 5 },
-    "1h": { rangeMinutes: 24 * 60, bucketMinutes: 60 },
-    "1d": { rangeMinutes: 7 * 24 * 60, bucketMinutes: 24 * 60 },
+  // Time window follows the overview filter; granularity only controls bucket size.
+  const bucketMinutes = {
+    "1m": 1,
+    "5m": 5,
+    "1h": 60,
+    "1d": 24 * 60,
   }[granularity];
+  const bucketMs = bucketMinutes * 60 * 1000;
   const now = new Date();
-  const bucketCount = Math.ceil(config.rangeMinutes / config.bucketMinutes);
-  const end = floorToBucket(now, config.bucketMinutes);
-  const start = new Date(
-    end.getTime() - (bucketCount - 1) * config.bucketMinutes * 60 * 1000,
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const sevenDaysStart = new Date(todayStart);
+  sevenDaysStart.setDate(sevenDaysStart.getDate() - 6);
+  const endOfYesterday = new Date(todayStart.getTime() - bucketMs);
+  const end = (() => {
+    if (filterRange === "today") {
+      return granularity === "1d" ? todayStart : floorToBucket(now, bucketMinutes);
+    }
+    if (filterRange === "yesterday") {
+      return granularity === "1d" ? yesterdayStart : endOfYesterday;
+    }
+    return granularity === "1d" ? todayStart : floorToBucket(now, bucketMinutes);
+  })();
+  const start = (() => {
+    if (filterRange === "today") {
+      return todayStart;
+    }
+    if (filterRange === "yesterday") {
+      return yesterdayStart;
+    }
+    return sevenDaysStart;
+  })();
+  const bucketCount = Math.max(
+    1,
+    Math.floor((end.getTime() - start.getTime()) / bucketMs) + 1,
   );
   // Aggregate raw rows into the selected time bucket for trend computations.
   const buckets = new Map<string, { activeMs: number; keyCount: number; sessionCount: number }>();
   for (const row of rows) {
     const rowDate = parseRowDate(row.date);
-    const bucketDate = floorToBucket(rowDate, config.bucketMinutes);
+    const bucketDate = floorToBucket(rowDate, bucketMinutes);
     // Validate by bucket range so current in-progress bucket (especially 1d granularity) is included.
     if (bucketDate < start || bucketDate > end) {
       continue;
@@ -81,7 +108,7 @@ export const buildTrendSeries = (
   const averageKeysPerSession: number[] = [];
   for (let i = 0; i < bucketCount; i += 1) {
     const pointDate = new Date(
-      start.getTime() + i * config.bucketMinutes * 60 * 1000,
+      start.getTime() + i * bucketMs,
     );
     const key = minuteKeyFromDate(pointDate);
     const value = buckets.get(key) ?? { activeMs: 0, keyCount: 0, sessionCount: 0 };
